@@ -91,6 +91,7 @@ public static class JobAssignmentMechanic
         structure.EmployeeIds.Add(agent.Id);
         structure.FilledSlots[slotTier] = structure.FilledSlots.GetValueOrDefault(slotTier) + 1;
         agent.EmployerStructureId = structure.Id;
+        agent.CurrentJobTier = slotTier;
         agent.CurrentWage = Defaults.Wages.MonthlyWage(slotTier);
     }
 }

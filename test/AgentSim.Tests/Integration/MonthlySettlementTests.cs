@@ -97,7 +97,8 @@ public class MonthlySettlementTests
     {
         // Founders' bonus = $5,000. Pre-commercial expenses = $1,000/mo (rent + utilities, no COL).
         // End month 1: $4,000 / 2: $3,000 / 3: $2,000 / 4: $1,000 / 5: $0 (still non-negative).
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        // Use full-cap reservoir to disable births; this test only cares about settler behavior.
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
         sim.CreateResidentialZone();
 
         sim.Tick(30 * 5);  // 5 months
@@ -109,7 +110,8 @@ public class MonthlySettlementTests
     public void AfterSixMonths_SettlersEmigrate_NoJobs()
     {
         // End of month 6: $5,000 - 6 × $1,000 = -$1,000 → fail emigration check → no AH → emigrate.
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        // Use full-cap reservoir to disable births; this test only cares about settler behavior.
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
         sim.CreateResidentialZone();
 
         sim.Tick(30 * 6);  // 6 months
@@ -120,7 +122,7 @@ public class MonthlySettlementTests
     [Fact]
     public void EmigratedAgents_ReturnToReservoir()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, RegionalReservoirSize = 60_000 });
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
         sim.CreateResidentialZone();
 
         Assert.Equal(60_000 - 50, sim.State.Region.AgentReservoir.Total);
@@ -135,7 +137,8 @@ public class MonthlySettlementTests
     public void Month5_AllSettlersHaveZeroSavings_ButStillInCity()
     {
         // End of month 5: $5,000 - 5 × $1,000 = $0 (non-negative — passes check)
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        // Use full-cap reservoir to disable births; this test only cares about settler behavior.
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
         sim.CreateResidentialZone();
 
         sim.Tick(30 * 5);  // 5 months

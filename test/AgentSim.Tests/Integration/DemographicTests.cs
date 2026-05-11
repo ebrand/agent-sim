@@ -41,7 +41,7 @@ public class DemographicTests
     [Fact]
     public void DeadAgent_DoesNotReturnToReservoir()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, RegionalReservoirSize = 60_000 });
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
         sim.CreateResidentialZone();
         var reservoirBefore = sim.State.Region.AgentReservoir.Total;
 
@@ -75,11 +75,7 @@ public class DemographicTests
     {
         // 50 working-age settlers × 0.5% birth rate = 0.25 babies/month. The fractional
         // accumulator means a baby is born every 4 months (4 × 0.25 = 1.0).
-        //
-        // Note: per the 60k total-agent cap, births require capacity headroom. Default
-        // RegionalReservoirSize = 60k means city + reservoir = 60k immediately after bootstrap,
-        // leaving zero room. Test uses a smaller reservoir so room exists.
-        var sim = Sim.Create(new SimConfig { Seed = 42, RegionalReservoirSize = 1_000 });
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 1_000 });
         sim.CreateResidentialZone();
 
         sim.Tick(30 * 4);
@@ -93,7 +89,7 @@ public class DemographicTests
     [Fact]
     public void Birth_BabyHasZeroAge_UneducatedTier_NoResidence()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, RegionalReservoirSize = 1_000 });
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 1_000 });
         sim.CreateResidentialZone();
         sim.Tick(30 * 4);  // 1 baby born
 
@@ -145,7 +141,7 @@ public class DemographicTests
     public void Birth_GatedByTotalAgentCap()
     {
         // Set reservoir to near-full, so total cap is binding.
-        var sim = Sim.Create(new SimConfig { Seed = 42, RegionalReservoirSize = 60_000 });
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
         sim.CreateResidentialZone();
         // 50 settlers in city, ~59,950 in reservoir → total exactly 60,000 (cap maxed).
         Assert.Equal(60_000, sim.State.City.Population + sim.State.Region.AgentReservoir.Total);
@@ -176,5 +172,82 @@ public class DemographicTests
         var ages1 = sim1.State.City.Agents.Values.Select(a => a.AgeDays).OrderBy(x => x).ToList();
         var ages2 = sim2.State.City.Agents.Values.Select(a => a.AgeDays).OrderBy(x => x).ToList();
         Assert.Equal(ages1, ages2);
+    }
+
+    [Fact]
+    public void DeadOverQualifiedAgent_DecrementsCorrectSlotTier()
+    {
+        // Regression: an over-qualified agent (college-educated in a primary slot) should
+        // decrement the primary-tier FilledSlots bucket on death, NOT the college bucket.
+        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        sim.CreateResidentialZone();
+
+        // Synthesize an over-qualified employed agent and a structure with one primary slot.
+        var structure = new Structure
+        {
+            Id = sim.State.AllocateStructureId(),
+            Type = StructureType.House,  // type doesn't matter for this unit-level check
+            ZoneId = 0,
+            ResidentialCapacity = 0,
+            JobSlots = new() { [EducationTier.Primary] = 1 },
+        };
+        sim.State.City.Structures[structure.Id] = structure;
+
+        var agent = new Agent
+        {
+            Id = sim.State.AllocateAgentId(),
+            EducationTier = EducationTier.College,        // over-qualified
+            AgeDays = Demographics.LifespanDays - 1,      // dies on next tick
+            EmployerStructureId = structure.Id,
+            CurrentJobTier = EducationTier.Primary,       // hired into a primary slot
+            CurrentWage = 1_000,
+        };
+        sim.State.City.Agents[agent.Id] = agent;
+        structure.EmployeeIds.Add(agent.Id);
+        structure.FilledSlots[EducationTier.Primary] = 1;
+
+        sim.Tick(1);
+
+        // Agent died. Primary slot should be vacated; College bucket should be untouched (i.e., 0/missing).
+        Assert.False(sim.State.City.Agents.ContainsKey(agent.Id));
+        Assert.Equal(0, structure.FilledSlots.GetValueOrDefault(EducationTier.Primary));
+        Assert.Equal(0, structure.FilledSlots.GetValueOrDefault(EducationTier.College));
+        Assert.DoesNotContain(agent.Id, structure.EmployeeIds);
+    }
+
+    [Fact]
+    public void EmigratedEmployedAgent_VacatesEmployerSlot()
+    {
+        // Regression: when an employed agent emigrates (insolvency), the employer's slot must
+        // be vacated. Previously Emigrate only removed the agent from city + residence, leaving
+        // FilledSlots/EmployeeIds stale.
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
+        sim.CreateResidentialZone();
+
+        var structure = new Structure
+        {
+            Id = sim.State.AllocateStructureId(),
+            Type = StructureType.House,
+            ZoneId = 0,
+            ResidentialCapacity = 0,
+            JobSlots = new() { [EducationTier.Primary] = 1 },
+        };
+        sim.State.City.Structures[structure.Id] = structure;
+
+        // Take one settler and pin them to this employer with no savings & no wage so
+        // the end-of-month check fails (savings stays at 0 then drops below 0).
+        var settler = sim.State.City.Agents.Values.First();
+        settler.EmployerStructureId = structure.Id;
+        settler.CurrentJobTier = EducationTier.Primary;
+        settler.CurrentWage = 0;
+        settler.Savings = -1;  // forces emigration on next end-of-month check
+        structure.EmployeeIds.Add(settler.Id);
+        structure.FilledSlots[EducationTier.Primary] = 1;
+
+        sim.Tick(30);  // end-of-month emigration check fires on day 30
+
+        Assert.False(sim.State.City.Agents.ContainsKey(settler.Id));
+        Assert.Equal(0, structure.FilledSlots.GetValueOrDefault(EducationTier.Primary));
+        Assert.DoesNotContain(settler.Id, structure.EmployeeIds);
     }
 }

@@ -30,9 +30,9 @@ public sealed class Sim
             Nature = config.Nature,
         };
 
-        // Initialize the regional reservoir to the cap with a biased distribution favoring lower tiers.
+        // Initialize the regional reservoir with a biased distribution favoring lower tiers.
         // Alpha-1 default distribution: 40 / 30 / 20 / 10 across uneducated / primary / secondary / college.
-        var totalReservoir = config.RegionalReservoirSize;
+        var totalReservoir = config.InitialReservoirSize;
         region.AgentReservoir.Uneducated = (int)(totalReservoir * 0.40);
         region.AgentReservoir.Primary = (int)(totalReservoir * 0.30);
         region.AgentReservoir.Secondary = (int)(totalReservoir * 0.20);

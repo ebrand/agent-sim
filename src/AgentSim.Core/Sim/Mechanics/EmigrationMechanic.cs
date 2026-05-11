@@ -80,6 +80,19 @@ public static class EmigrationMechanic
             residence.ResidentIds.Remove(agent.Id);
         }
 
+        // Vacate employment slot (if any). Use CurrentJobTier — the agent may be over-qualified
+        // relative to EducationTier, and the slot bucket to decrement is whichever they were hired into.
+        if (agent.EmployerStructureId is long empId
+            && state.City.Structures.TryGetValue(empId, out var employer)
+            && agent.CurrentJobTier is EducationTier jobTier)
+        {
+            employer.EmployeeIds.Remove(agent.Id);
+            if (employer.FilledSlots.TryGetValue(jobTier, out var count) && count > 0)
+            {
+                employer.FilledSlots[jobTier] = count - 1;
+            }
+        }
+
         // Remove from city, return to regional reservoir at agent's CURRENT education tier.
         // Savings travel with the agent (lost from city economy).
         state.City.Agents.Remove(agent.Id);

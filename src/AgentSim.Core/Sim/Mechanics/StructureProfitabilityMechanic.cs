@@ -75,6 +75,7 @@ public static class StructureProfitabilityMechanic
             if (state.City.Agents.TryGetValue(employeeId, out var agent))
             {
                 agent.EmployerStructureId = null;
+                agent.CurrentJobTier = null;
                 agent.CurrentWage = 0;
             }
         }

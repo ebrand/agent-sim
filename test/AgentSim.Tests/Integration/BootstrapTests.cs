@@ -19,7 +19,7 @@ public class BootstrapTests
     [Fact]
     public void NewSim_RegionalReservoirAtCap()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, RegionalReservoirSize = 60_000 });
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
 
         Assert.Equal(60_000, sim.State.Region.AgentReservoir.Total);
     }
@@ -45,7 +45,7 @@ public class BootstrapTests
     [Fact]
     public void Bootstrap_DrawsSettlersFromReservoir()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, RegionalReservoirSize = 60_000 });
+        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
 
         sim.CreateResidentialZone();
 

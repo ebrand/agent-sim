@@ -34,20 +34,17 @@ public static class AgingMechanic
             residence.ResidentIds.Remove(agent.Id);
         }
 
-        // Vacate employment (if any). Decrement FilledSlots for the employer.
-        // Note: we don't know which tier slot the agent was in without storing it on Agent.
-        // For M7 simplicity: just decrement the lowest-tier filled slot, which is conservative
-        // (under-filling at higher tiers triggers re-hire for those tiers next tick).
-        // A future refinement is to store SlotTier on the agent.
+        // Vacate employment (if any). Decrement FilledSlots for the exact tier the agent
+        // was hired into (CurrentJobTier), not EducationTier — over-qualified agents would
+        // otherwise decrement the wrong bucket.
         if (agent.EmployerStructureId is long empId
-            && state.City.Structures.TryGetValue(empId, out var employer))
+            && state.City.Structures.TryGetValue(empId, out var employer)
+            && agent.CurrentJobTier is EducationTier jobTier)
         {
             employer.EmployeeIds.Remove(agent.Id);
-            // Decrement filled count for the agent's education tier (best approximation)
-            var tier = agent.EducationTier;
-            if (employer.FilledSlots.TryGetValue(tier, out var count) && count > 0)
+            if (employer.FilledSlots.TryGetValue(jobTier, out var count) && count > 0)
             {
-                employer.FilledSlots[tier] = count - 1;
+                employer.FilledSlots[jobTier] = count - 1;
             }
         }
 

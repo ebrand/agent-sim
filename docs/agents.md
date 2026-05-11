@@ -54,6 +54,30 @@ Education demand is computed per tier as the gap between eligible agents and ava
 
 This pool is independent of the **job-education demand pool** (see below).
 
+## Population Dynamics Arc
+
+The total number of agent records — city population + regional reservoir — is bounded by a hard **60,000 cap**. The default new-game distribution starts with **50 settlers in the city** (via bootstrap; see Settler Bootstrap below) and an **initial reservoir of 2,000** working-age candidates. That leaves ~58,000 units of headroom under the cap, which is the budget the city has to grow over the full arc of a game.
+
+There are exactly **two ways the city can gain agents**:
+
+1. **Immigration** — pulls a working-age agent out of the reservoir and into the city. This shifts an agent across the boundary but does not change the total. When the reservoir hits zero, immigration stops.
+2. **Births** — create entirely new agents in-city. Each birth consumes one unit of headroom against the 60k cap.
+
+There are exactly **three ways the city can lose agents**:
+
+1. **Death** at lifespan (60 game-years). Removes the agent from the cap entirely; frees one unit of headroom that can later be claimed by a birth or by a new external arrival. Savings are forfeit.
+2. **Emigration** on insolvency. The agent goes back to the reservoir at their *current* education tier (which may be higher than their original — see "Well of souls" below). The total across the boundary is unchanged.
+3. **Failure to bootstrap.** Not really a loss, but if the player never creates a residential zone, the 50 settlers are never drawn from the reservoir at all.
+
+The arc is therefore: a small founder city pulls from a finite pool of off-region candidates while its own working-age population produces babies that fill out the long-term population. Both inputs are gated:
+
+- **Immigration** is gated by reservoir contents (when empty, no more immigration), by per-month throttling (see Mass-immigration throttling), and by the availability of structures the immigrants are assigned to.
+- **Births** are gated by (a) no residential housing waitlist and (b) at least one unit of headroom under the 60k cap. When the reservoir is full or near-full, total = 60k and births stall until deaths or emigrations open headroom.
+
+**Well of souls.** Because emigrants return to the reservoir at their current (potentially in-city-advanced) education tier, the reservoir composition shifts upward over the course of a long game. A college-educated emigrant who originally arrived as primary-tier leaves a "better" candidate in the pool than the one who arrived. Over many cycles, the regional pool quality is a function of the city's own education capacity.
+
+**Configuration knobs.** `SimConfig.InitialReservoirSize` (default 2,000) sets the starting reservoir population; `Demographics.TotalAgentCap` (60,000) is the hard ceiling on total agent records. A player who wants a "tight" game where births can't fire because the pool is full can set `InitialReservoirSize = 60_000`; a player who wants births to drive most growth can set it lower.
+
 ## Birth
 
 Babies are born in-city only. There are no babies in the regional reservoir.

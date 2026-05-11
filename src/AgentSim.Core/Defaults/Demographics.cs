@@ -25,4 +25,12 @@ public static class Demographics
     public const int SettlerCount = 50;
     public const double SettlerUneducatedFraction = 0.6;
     public const double SettlerPrimaryFraction = 0.4;
+
+    /// <summary>Settler age range upper bound (days). Settlers are uniformly young adults
+    /// (21 to 30 game-years old) so they don't die from old age during the founding decade.</summary>
+    public const int SettlerMaxAgeDays = 30 * DaysPerYear;  // 10,800 days = 30 game-years
+
+    // Birth
+    /// <summary>Monthly birth rate as fraction of working-age population (per `agents.md`).</summary>
+    public const double MonthlyBirthRate = 0.005;
 }

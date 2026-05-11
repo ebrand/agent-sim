@@ -13,4 +13,7 @@ public sealed class City
     public Dictionary<long, Zone> Zones { get; } = new();
 
     public int Population => Agents.Count;
+
+    /// <summary>Fractional births accumulator. When this exceeds 1.0, integer babies are born and the accumulator decreases.</summary>
+    public double BirthFractionalAccumulator { get; set; }
 }

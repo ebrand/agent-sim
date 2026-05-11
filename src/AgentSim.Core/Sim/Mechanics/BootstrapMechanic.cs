@@ -80,9 +80,10 @@ public static class BootstrapMechanic
             // Pull from regional reservoir
             state.Region.AgentReservoir.Decrement(tier);
 
-            // Random working-age (between working-age start and lifespan)
+            // Random young-adult age (21–30 game-years), so settlers don't age out during
+            // the founding decade. See Demographics.SettlerMaxAgeDays.
             var ageDays = Demographics.WorkingAgeStartDay
-                + state.Prng.NextInt(Demographics.LifespanDays - Demographics.WorkingAgeStartDay);
+                + state.Prng.NextInt(Demographics.SettlerMaxAgeDays - Demographics.WorkingAgeStartDay);
 
             var agent = new Agent
             {

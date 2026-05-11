@@ -146,6 +146,9 @@ public static class SettlementMechanic
 
         // End-of-month emigration check (agents whose savings went negative this month)
         EmigrationMechanic.EndOfMonthCheck(state);
+
+        // Monthly births (after emigration so this month's emigrants don't count toward birth rate)
+        BirthMechanic.RunMonthlyBirths(state);
     }
 
     // === Per-event implementations ===

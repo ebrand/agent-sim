@@ -166,6 +166,7 @@ public sealed class Sim
             State.CurrentTick++;
 
             // Daily events
+            AgingMechanic.RunDaily(State);  // agents age; deaths happen at lifespan
             ConstructionMechanic.AdvanceConstruction(State);
             CommercialOperationMechanic.HireForNewlyOperationalStructures(State);
             IndustrialProductionMechanic.RunDaily(State);

@@ -133,15 +133,18 @@ public static class SettlementMechanic
             }
         }
 
-        // End-of-month profitability check (M5+): not yet implemented.
-        // For M3 we just reset the monthly accumulators.
+        // End-of-month profitability check — fires after all settlements (so this month's
+        // revenue and expenses are fully populated) but before the monthly reset.
+        StructureProfitabilityMechanic.EndOfMonthCheck(state);
+
+        // Reset monthly accumulators for the next month.
         foreach (var structure in state.City.Structures.Values)
         {
             structure.MonthlyRevenue = 0;
             structure.MonthlyExpenses = 0;
         }
 
-        // End-of-month emigration check
+        // End-of-month emigration check (agents whose savings went negative this month)
         EmigrationMechanic.EndOfMonthCheck(state);
     }
 

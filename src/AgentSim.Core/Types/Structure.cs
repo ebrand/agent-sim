@@ -23,6 +23,9 @@ public sealed class Structure
     /// <summary>Whether the structure has gone inactive due to unprofitability (relevant for commercial / industrial).</summary>
     public bool Inactive { get; set; }
 
+    /// <summary>Number of consecutive months this structure has been inactive. Drives auto-reactivation.</summary>
+    public int InactiveMonths { get; set; }
+
     /// <summary>Whether the previous month was unprofitable (warning state before going inactive).</summary>
     public bool UnprofitableWarning { get; set; }
 

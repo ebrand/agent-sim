@@ -112,15 +112,16 @@ public class IndustrialTests
         var factory = PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
         var storage = PlaceAndOperationalize(sim, StructureType.Storage);
 
-        sim.Tick(1);  // hire
-        sim.Tick(60);  // 2 months for chain to flow + storage to absorb
+        // Tick to mid-month so we observe goods flow while structures are still operational
+        // (single-manufacturer storage is unprofitable; without this constraint it would go inactive after 2 months)
+        sim.Tick(20);
 
-        // Storage should have received and (per M4 simplification) sold all household goods to Region.Treasury
-        // Verify storage made revenue from selling
-        Assert.True(storage.MonthlyRevenue > 0 || storage.CashBalance > 100_000,
-            "Storage should have earned money from goods sold to Region.Treasury");
+        // Verify the flow: manufacturer produces, storage absorbs, storage sells to Region.Treasury
+        var regionHousehold = sim.State.Region.GoodsReservoir.GetValueOrDefault(ManufacturedGood.Household);
+        Assert.True(regionHousehold > 0,
+            $"Region should have received household goods from storage sales. Got {regionHousehold}.");
 
-        // Manufacturer's storage should be drained (storage absorbed it)
+        // Manufacturer's internal storage should not be saturated (storage was absorbing throughout)
         var factoryHouseholdHoldings = factory.ManufacturedStorage.GetValueOrDefault(ManufacturedGood.Household);
         Assert.True(factoryHouseholdHoldings < 1000,
             $"Manufacturer's internal storage should not be full (storage absorbing). Got {factoryHouseholdHoldings}.");

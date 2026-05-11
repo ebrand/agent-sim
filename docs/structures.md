@@ -152,16 +152,25 @@ If a job slot's education requirement cannot be matched by an available agent, t
 
 All industrial structure types — extractors, processors, manufacturers, and storage — include **uneducated** as a valid job-slot education requirement.
 
-**Default mix per industrial structure (per 100 workers):**
-
-| Tier | Workers |
-|---|---|
-| College | 15 |
-| Secondary | 20 |
-| Primary | 40 |
-| Uneducated | 25 |
+**Default mix per industrial structure: 100 workers** (15 college / 20 secondary / 40 primary / 25 uneducated). Storage uses a smaller 10-worker mix.
 
 These are alpha-1 defaults; user-adjustable per structure type.
+
+### Industrial workforce: a long-arc gameplay implication
+
+The 100-worker requirement per industrial structure has a deliberate gameplay consequence:
+
+- **Bootstrap provides only 50 settlers** (60% uneducated, 40% primary). Even one industrial structure can't be fully staffed at bootstrap — only ~45 of those settlers qualify for any industrial slots (no college/secondary settlers exist).
+- **Industrial buildout requires city growth first.** The intended arc is:
+  1. Bootstrap settlers create initial population.
+  2. Player builds **commercial structures** (5–15 workers each) — these can be staffed from the bootstrap pool.
+  3. Commercial demand creates job demand, which drives **immigration** (capped at `max(50, 1% × city_population)/month`).
+  4. Population grows over months/years to hundreds, then thousands of working-age agents.
+  5. Once population supports it (~250+ for one industrial chain), player builds extractors → processors → manufacturers → storage.
+  6. Industrial scaling continues as population grows, becoming the late-game economy.
+- **Real-time pacing:** at 1 tick = 1 second, 1 game-month = 30 seconds; reaching ~500 population takes ~10 game-months ≈ 5 real-time minutes. Industrial chains become viable after that.
+
+This long-arc design is intentional. Industrial is the "late game." For unit tests of industrial mechanics, staged staffing (manually setting `FilledSlots`) bypasses the population-growth ramp.
 
 ### Production tied to jobs filled
 

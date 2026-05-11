@@ -157,8 +157,10 @@ Placeholder values calibrated to roughly 5% of expected revenue per structure. A
 
 | Structure | Monthly utility cost |
 |---|---|
-| Storage | $1,000 |
-| Fuel storage | $1,000 |
+| Storage | $500 |
+| Fuel storage | $500 |
+
+(Reduced from $1,000 each — at $1,000 storage required ~3 different manufacturers feeding it to break even, which was an unrealistic early-game expectation. At $500, 2 manufacturers can sustain a storage.)
 
 **Residential property tax does not exist as a separate line.** Neither residential structures nor agents pay a discrete property tax. What was previously a structural residential property tax has been folded into the rent agents pay to treasury — rent is the single residential housing-cost line.
 

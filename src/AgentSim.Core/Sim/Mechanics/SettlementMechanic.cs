@@ -76,12 +76,17 @@ public static class SettlementMechanic
             PayAgentUtilities(state, agent);
         }
 
-        // Commercial outflow: utilities (commercial → treasury)
+        // Commercial / Industrial outflow: utilities (structure → treasury)
         foreach (var structure in state.City.Structures.Values)
         {
-            if (structure.Category == StructureCategory.Commercial && structure.Operational && !structure.Inactive)
+            if (!structure.Operational || structure.Inactive) continue;
+            if (structure.Category == StructureCategory.Commercial)
             {
                 PayCommercialUtilities(state, structure);
+            }
+            else if (Industrial.IsIndustrial(structure.Type))
+            {
+                PayIndustrialUtilities(state, structure);
             }
         }
 
@@ -172,6 +177,14 @@ public static class SettlementMechanic
         state.City.TreasuryBalance += utility;
     }
 
+    private static void PayIndustrialUtilities(SimState state, Structure structure)
+    {
+        var utility = Industrial.MonthlyUtility(structure.Type);
+        structure.CashBalance -= utility;
+        structure.MonthlyExpenses += utility;
+        state.City.TreasuryBalance += utility;
+    }
+
     private static void PayWageInstallment(SimState state, Agent agent)
     {
         if (agent.CurrentWage <= 0) return;
@@ -214,7 +227,10 @@ public static class SettlementMechanic
     private static int StructureValueLookup(Structure structure) => structure.Category switch
     {
         StructureCategory.Commercial => Commercial.StructureValue(structure.Type),
-        // Industrial values land in M4
+        StructureCategory.IndustrialExtractor => Industrial.StructureValue(structure.Type),
+        StructureCategory.IndustrialProcessor => Industrial.StructureValue(structure.Type),
+        StructureCategory.IndustrialManufacturer => Industrial.StructureValue(structure.Type),
+        StructureCategory.IndustrialStorage => Industrial.StructureValue(structure.Type),
         _ => 0,
     };
 }

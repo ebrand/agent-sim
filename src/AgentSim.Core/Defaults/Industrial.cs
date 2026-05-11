@@ -1,0 +1,222 @@
+using AgentSim.Core.Types;
+
+namespace AgentSim.Core.Defaults;
+
+/// <summary>
+/// Industrial structure defaults — extractors, processors, manufacturers, and storage.
+/// All extractor / processor / manufacturer structures share a uniform daily production
+/// capacity (10 units/day at full staffing). Storage is sized for many days of throughput.
+/// </summary>
+public static class Industrial
+{
+    /// <summary>Maximum daily output per industrial structure at 100% staffing.</summary>
+    public const int MaxOutputPerDay = 10;
+
+    /// <summary>Default internal storage capacity for extractor / processor / manufacturer structures.</summary>
+    public const int InternalStorageCapacity = 1_000;
+
+    /// <summary>Default storage capacity for the (final) Storage / FuelStorage structures.</summary>
+    public const int FinalStorageCapacity = 10_000;
+
+    /// <summary>Storage's pass-through fee: buys from manufacturer at 80% of price, sells at 100%.</summary>
+    public const double StoragePassThroughRate = 0.80;
+
+    /// <summary>Standard worker count for non-storage industrial structures.</summary>
+    public const int StandardWorkerCount = 100;
+
+    /// <summary>Worker count for storage structures (much smaller than producer structures).</summary>
+    public const int StorageWorkerCount = 10;
+
+    // ===== Production mapping =====
+
+    /// <summary>Raw material an extractor produces, or null if not an extractor.</summary>
+    public static RawMaterial? ExtractorOutput(StructureType type) => type switch
+    {
+        StructureType.ForestExtractor => RawMaterial.Wood,
+        StructureType.Mine => RawMaterial.IronOre,
+        StructureType.CoalMine => RawMaterial.Coal,
+        StructureType.Quarry => RawMaterial.Rock,
+        StructureType.SandPit => RawMaterial.Sand,
+        StructureType.Farm => RawMaterial.Crops,
+        _ => null,
+    };
+
+    /// <summary>(input raw material, output processed good) for processor types, or null.</summary>
+    public static (RawMaterial Input, ProcessedGood Output)? ProcessorRecipe(StructureType type) => type switch
+    {
+        StructureType.Sawmill => (RawMaterial.Wood, ProcessedGood.Lumber),
+        StructureType.Smelter => (RawMaterial.IronOre, ProcessedGood.Steel),
+        StructureType.Mill => (RawMaterial.Crops, ProcessedGood.Grain),
+        StructureType.AggregatePlant => (RawMaterial.Rock, ProcessedGood.Aggregate),
+        StructureType.SilicatePlant => (RawMaterial.Sand, ProcessedGood.Silicate),
+        StructureType.FuelRefinery => (RawMaterial.Coal, ProcessedGood.Fuel),
+        _ => null,
+    };
+
+    /// <summary>(input processed good, input units per output, output manufactured good) for manufacturer types, or null.</summary>
+    public static (ProcessedGood Input, int InputUnits, ManufacturedGood Output)? ManufacturerRecipe(StructureType type) => type switch
+    {
+        StructureType.HouseholdFactory => (ProcessedGood.Lumber, 5, ManufacturedGood.Household),
+        StructureType.BldgSuppliesFactory => (ProcessedGood.Lumber, 9, ManufacturedGood.BldgSupplies),
+        StructureType.MetalGoodsFactory => (ProcessedGood.Steel, 3, ManufacturedGood.MetalGoods),
+        StructureType.FoodPackingPlant => (ProcessedGood.Grain, 4, ManufacturedGood.Food),
+        StructureType.ClothingFactory => (ProcessedGood.Textiles, 2, ManufacturedGood.Clothing),
+        StructureType.ConcretePlant => (ProcessedGood.Aggregate, 5, ManufacturedGood.Concrete),
+        StructureType.GlassWorks => (ProcessedGood.Silicate, 10, ManufacturedGood.GlassGoods),
+        _ => null,
+    };
+
+    // ===== Prices =====
+
+    public static int RawMaterialPrice(RawMaterial good) => good switch
+    {
+        RawMaterial.Wood => 2,
+        RawMaterial.IronOre => 4,
+        RawMaterial.Crops => 1,
+        RawMaterial.Rock => 3,
+        RawMaterial.Sand => 2,
+        RawMaterial.Coal => 2,
+        _ => throw new ArgumentOutOfRangeException(nameof(good)),
+    };
+
+    public static int ProcessedGoodPrice(ProcessedGood good) => good switch
+    {
+        ProcessedGood.Lumber => 4,
+        ProcessedGood.Steel => 8,
+        ProcessedGood.Grain => 3,
+        ProcessedGood.Textiles => 2,
+        ProcessedGood.Aggregate => 6,
+        ProcessedGood.Silicate => 4,
+        ProcessedGood.Fuel => 8,
+        _ => throw new ArgumentOutOfRangeException(nameof(good)),
+    };
+
+    public static int ManufacturedGoodPrice(ManufacturedGood good) => good switch
+    {
+        ManufacturedGood.Household => 40,
+        ManufacturedGood.BldgSupplies => 72,
+        ManufacturedGood.MetalGoods => 48,
+        ManufacturedGood.Food => 24,
+        ManufacturedGood.Clothing => 8,
+        ManufacturedGood.Concrete => 60,
+        ManufacturedGood.GlassGoods => 80,
+        _ => throw new ArgumentOutOfRangeException(nameof(good)),
+    };
+
+    // ===== Structure values (drives property tax at 0.5% / month) =====
+
+    public static int StructureValue(StructureType type) => type switch
+    {
+        // Extractors
+        StructureType.ForestExtractor => 80_000,
+        StructureType.Mine => 150_000,
+        StructureType.CoalMine => 150_000,
+        StructureType.Quarry => 100_000,
+        StructureType.SandPit => 80_000,
+        StructureType.Farm => 100_000,
+        // Processors
+        StructureType.Sawmill => 200_000,
+        StructureType.Smelter => 400_000,
+        StructureType.Mill => 200_000,
+        StructureType.AggregatePlant => 200_000,
+        StructureType.SilicatePlant => 200_000,
+        StructureType.FuelRefinery => 400_000,
+        // Manufacturers
+        StructureType.HouseholdFactory => 300_000,
+        StructureType.BldgSuppliesFactory => 300_000,
+        StructureType.MetalGoodsFactory => 500_000,
+        StructureType.FoodPackingPlant => 300_000,
+        StructureType.ClothingFactory => 300_000,
+        StructureType.ConcretePlant => 300_000,
+        StructureType.GlassWorks => 300_000,
+        // Storage
+        StructureType.Storage => 80_000,
+        StructureType.FuelStorage => 80_000,
+        _ => throw new ArgumentOutOfRangeException(nameof(type), $"{type} is not an industrial structure"),
+    };
+
+    // ===== Monthly utility cost =====
+
+    public static int MonthlyUtility(StructureType type) => type switch
+    {
+        // Extractors
+        StructureType.ForestExtractor => 1_000,
+        StructureType.Mine => 1_500,
+        StructureType.CoalMine => 1_500,
+        StructureType.Quarry => 1_000,
+        StructureType.SandPit => 1_000,
+        StructureType.Farm => 1_000,
+        // Processors
+        StructureType.Sawmill => 3_000,
+        StructureType.Smelter => 5_000,
+        StructureType.Mill => 3_000,
+        StructureType.AggregatePlant => 3_000,
+        StructureType.SilicatePlant => 3_000,
+        StructureType.FuelRefinery => 5_000,
+        // Manufacturers
+        StructureType.HouseholdFactory => 4_000,
+        StructureType.BldgSuppliesFactory => 4_000,
+        StructureType.MetalGoodsFactory => 6_000,
+        StructureType.FoodPackingPlant => 4_000,
+        StructureType.ClothingFactory => 4_000,
+        StructureType.ConcretePlant => 4_000,
+        StructureType.GlassWorks => 4_000,
+        // Storage — reduced from $1,000 to $500 so storage breaks even at modest scale
+        // (2-3 manufacturers feeding 1 storage is enough to cover utility + property tax)
+        StructureType.Storage => 500,
+        StructureType.FuelStorage => 500,
+        _ => throw new ArgumentOutOfRangeException(nameof(type)),
+    };
+
+    // ===== Job slots =====
+
+    /// <summary>
+    /// Job slot count per tier. Standard 100-worker mix: 15 college / 20 secondary / 40 primary / 25 uneducated.
+    /// Storage uses a 10-worker mix: 1 college / 2 secondary / 4 primary / 3 uneducated.
+    /// </summary>
+    public static IReadOnlyDictionary<EducationTier, int> JobSlots(StructureType type)
+    {
+        if (type == StructureType.Storage || type == StructureType.FuelStorage)
+        {
+            return new Dictionary<EducationTier, int>
+            {
+                [EducationTier.College] = 1,
+                [EducationTier.Secondary] = 2,
+                [EducationTier.Primary] = 4,
+                [EducationTier.Uneducated] = 3,
+            };
+        }
+
+        // Standard 100-worker mix for extractor / processor / manufacturer
+        return new Dictionary<EducationTier, int>
+        {
+            [EducationTier.College] = 15,
+            [EducationTier.Secondary] = 20,
+            [EducationTier.Primary] = 40,
+            [EducationTier.Uneducated] = 25,
+        };
+    }
+
+    // ===== Convenience predicates =====
+
+    public static bool IsExtractor(StructureType type) =>
+        type.Category() == StructureCategory.IndustrialExtractor;
+
+    public static bool IsProcessor(StructureType type) =>
+        type.Category() == StructureCategory.IndustrialProcessor;
+
+    public static bool IsManufacturer(StructureType type) =>
+        type.Category() == StructureCategory.IndustrialManufacturer;
+
+    public static bool IsStorage(StructureType type) =>
+        type.Category() == StructureCategory.IndustrialStorage;
+
+    public static bool IsIndustrial(StructureType type)
+    {
+        var cat = type.Category();
+        return cat == StructureCategory.IndustrialExtractor
+            || cat == StructureCategory.IndustrialProcessor
+            || cat == StructureCategory.IndustrialManufacturer
+            || cat == StructureCategory.IndustrialStorage;
+    }
+}

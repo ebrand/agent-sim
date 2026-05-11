@@ -50,5 +50,17 @@ public sealed class Structure
     /// <summary>Expenses accumulated this month (reset at end of month). Used for profitability check (M5+).</summary>
     public int MonthlyExpenses { get; set; }
 
+    /// <summary>Internal buffer of raw materials (extractor output / processor input).</summary>
+    public Dictionary<RawMaterial, int> RawStorage { get; } = new();
+
+    /// <summary>Internal buffer of processed goods (processor output / manufacturer input).</summary>
+    public Dictionary<ProcessedGood, int> ProcessedStorage { get; } = new();
+
+    /// <summary>Internal buffer of manufactured goods (manufacturer output / storage holdings).</summary>
+    public Dictionary<ManufacturedGood, int> ManufacturedStorage { get; } = new();
+
+    /// <summary>Capacity of internal storage for raw / processed / manufactured goods (single shared cap per type).</summary>
+    public int InternalStorageCapacity { get; init; }
+
     public StructureCategory Category => Type.Category();
 }

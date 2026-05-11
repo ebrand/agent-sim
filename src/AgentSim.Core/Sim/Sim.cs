@@ -95,6 +95,34 @@ public sealed class Sim
     }
 
     /// <summary>
+    /// Manually place an industrial structure (no zone required — industrial sits outside zones).
+    /// The structure begins construction (90 ticks) and is operational once construction completes.
+    /// </summary>
+    public Structure PlaceIndustrialStructure(StructureType type)
+    {
+        if (!Industrial.IsIndustrial(type))
+            throw new ArgumentException($"{type} is not an industrial structure type", nameof(type));
+
+        var capacity = Industrial.IsStorage(type)
+            ? Industrial.FinalStorageCapacity
+            : Industrial.InternalStorageCapacity;
+
+        var structure = new Structure
+        {
+            Id = State.AllocateStructureId(),
+            Type = type,
+            ZoneId = 0,  // industrial sits outside zones
+            ResidentialCapacity = 0,
+            ConstructionTicks = 0,
+            RequiredConstructionTicks = 90,
+            JobSlots = Industrial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
+            InternalStorageCapacity = capacity,
+        };
+        State.City.Structures[structure.Id] = structure;
+        return structure;
+    }
+
+    /// <summary>
     /// Manually place a commercial structure in a commercial zone. The structure begins construction
     /// (90 ticks) and is operational once construction completes.
     /// </summary>
@@ -140,6 +168,7 @@ public sealed class Sim
             // Daily events
             ConstructionMechanic.AdvanceConstruction(State);
             CommercialOperationMechanic.HireForNewlyOperationalStructures(State);
+            IndustrialProductionMechanic.RunDaily(State);
 
             // Periodic settlements (fires on days 1, 8, 15, 22, 30)
             SettlementMechanic.RunDailySettlements(State);

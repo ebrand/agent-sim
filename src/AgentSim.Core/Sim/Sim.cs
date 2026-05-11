@@ -96,15 +96,28 @@ public sealed class Sim
     }
 
     /// <summary>
-    /// Manually place an industrial structure (no zone required — industrial sits outside zones).
-    /// The structure begins construction (90 ticks) and is operational once construction completes.
+    /// Manually place an industrial structure under a CorporateHq's ownership. Industrial structures
+    /// sit outside zones. Construction cost is deducted from the HQ's CashBalance (not the city
+    /// treasury) — per M12 design: each industrial chain is owned and funded by a parent commercial
+    /// venture. The structure begins 7-tick construction and is operational once it completes.
     /// </summary>
-    public Structure PlaceIndustrialStructure(StructureType type)
+    public Structure PlaceIndustrialStructure(StructureType type, long ownerHqId)
     {
         if (!Industrial.IsIndustrial(type))
             throw new ArgumentException($"{type} is not an industrial structure type", nameof(type));
 
-        ChargeConstructionCost(type);
+        if (!State.City.Structures.TryGetValue(ownerHqId, out var hq))
+            throw new ArgumentException($"HQ {ownerHqId} not found", nameof(ownerHqId));
+        if (hq.Type != StructureType.CorporateHq)
+            throw new ArgumentException($"Structure {ownerHqId} is not a CorporateHq", nameof(ownerHqId));
+        if (hq.Industry is not IndustryType hqIndustry)
+            throw new InvalidOperationException($"HQ {ownerHqId} has no Industry set");
+        if (!Defaults.Industry.Allows(hqIndustry, type))
+            throw new InvalidOperationException(
+                $"HQ {ownerHqId} is a {hqIndustry} industry; cannot fund a {type}");
+
+        // Charge construction cost to the HQ, not the city treasury.
+        ChargeHqConstructionCost(hq, type);
 
         var capacity = Industrial.IsStorage(type)
             ? Industrial.FinalStorageCapacity
@@ -120,8 +133,10 @@ public sealed class Sim
             RequiredConstructionTicks = 7,
             JobSlots = Industrial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
             InternalStorageCapacity = capacity,
+            OwnerHqId = ownerHqId,
         };
         State.City.Structures[structure.Id] = structure;
+        hq.OwnedStructureIds.Add(structure.Id);
         return structure;
     }
 
@@ -140,6 +155,54 @@ public sealed class Sim
                 $"Insufficient treasury to construct {type}: cost {cost}, available {State.City.TreasuryBalance}");
         }
         State.City.TreasuryBalance -= cost;
+    }
+
+    /// <summary>
+    /// Deduct construction cost from the HQ's CashBalance (industrial structures are funded by
+    /// their parent HQ, not the city treasury). Throws if the HQ can't afford it.
+    /// </summary>
+    private static void ChargeHqConstructionCost(Structure hq, StructureType type)
+    {
+        var cost = Defaults.Construction.Cost(type);
+        if (cost <= 0) return;
+        if (hq.CashBalance < cost)
+        {
+            throw new InvalidOperationException(
+                $"HQ {hq.Id} ({hq.Industry}) lacks cash for {type}: cost {cost}, available {hq.CashBalance}");
+        }
+        hq.CashBalance -= cost;
+    }
+
+    /// <summary>
+    /// Place a CorporateHq inside a commercial zone for the given industry. The HQ self-funds:
+    /// no deduction from the city treasury. Its starting CashBalance is 2× the cost of building
+    /// out the entire vertical (see Defaults.Industry.StartingCashFor), leaving roughly half its
+    /// capital in reserve after the supply chain is built. The HQ then funds its own subordinates'
+    /// construction, accrues their profits each month, and pays a corporate-profit tax to the city.
+    /// </summary>
+    public Structure PlaceCorporateHq(long commercialZoneId, IndustryType industry, string name)
+    {
+        if (!State.City.Zones.TryGetValue(commercialZoneId, out var zone))
+            throw new ArgumentException($"Zone {commercialZoneId} not found", nameof(commercialZoneId));
+        if (zone.Type != ZoneType.Commercial)
+            throw new ArgumentException($"Zone {commercialZoneId} is not a commercial zone", nameof(commercialZoneId));
+
+        var structure = new Structure
+        {
+            Id = State.AllocateStructureId(),
+            Type = StructureType.CorporateHq,
+            ZoneId = zone.Id,
+            ResidentialCapacity = 0,
+            ConstructionTicks = 0,
+            RequiredConstructionTicks = 7,
+            JobSlots = Commercial.JobSlots(StructureType.CorporateHq).ToDictionary(kv => kv.Key, kv => kv.Value),
+            Name = name,
+            Industry = industry,
+            CashBalance = Defaults.Industry.StartingCashFor(industry),
+        };
+        State.City.Structures[structure.Id] = structure;
+        zone.StructureIds.Add(structure.Id);
+        return structure;
     }
 
     /// <summary>

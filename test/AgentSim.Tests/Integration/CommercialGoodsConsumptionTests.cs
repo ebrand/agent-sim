@@ -18,10 +18,25 @@ public class CommercialGoodsConsumptionTests
         return s;
     }
 
+    /// <summary>Ensure a Forestry HQ exists in the sim and return its id.</summary>
+    private static long EnsureHq(Sim sim)
+    {
+        var existing = sim.State.City.Structures.Values
+            .FirstOrDefault(s => s.Type == StructureType.CorporateHq);
+        if (existing != null) return existing.Id;
+        var commZone = sim.State.City.Zones.Values.FirstOrDefault(z => z.Type == ZoneType.Commercial)
+            ?? sim.CreateCommercialZone();
+        var hq = sim.PlaceCorporateHq(commZone.Id, IndustryType.Forestry, "TestCo");
+        hq.ConstructionTicks = hq.RequiredConstructionTicks;
+        hq.CashBalance = 50_000_000;
+        return hq.Id;
+    }
+
     /// <summary>Place an industrial structure with full staffing and pre-seeded goods.</summary>
     private static Structure SeedStorageWithGoods(Sim sim, int foodUnits = 0, int clothingUnits = 0, int householdUnits = 0)
     {
-        var s = sim.PlaceIndustrialStructure(StructureType.Storage);
+        var hqId = EnsureHq(sim);
+        var s = sim.PlaceIndustrialStructure(StructureType.Storage, hqId);
         s.ConstructionTicks = s.RequiredConstructionTicks;
         s.CashBalance = 100_000;
         foreach (var (tier, count) in s.JobSlots)
@@ -57,17 +72,21 @@ public class CommercialGoodsConsumptionTests
     [Fact]
     public void Commercial_PaysStorage_WhenPullingGoods()
     {
+        // M12: storage's positive profit gets swept up to its owning HQ at end-of-month, so
+        // storage.CashBalance ends up close to its seeded value. Check the HQ's cash to see
+        // that the storage sale revenue made it through (revenue - costs - corporate tax).
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var commZone = sim.CreateCommercialZone();
         var shop = PlaceOperationalShop(sim, commZone.Id);
         var storage = SeedStorageWithGoods(sim, foodUnits: 10_000, clothingUnits: 10_000, householdUnits: 5_000);
 
-        var storageCashBefore = storage.CashBalance;
+        var hq = sim.State.City.Structures[storage.OwnerHqId!.Value];
+        var hqCashBefore = hq.CashBalance;
         sim.Tick(30);
 
-        Assert.True(storage.CashBalance > storageCashBefore,
-            $"Storage should have received money from commercial purchases. Before: {storageCashBefore}, After: {storage.CashBalance}");
+        Assert.True(hq.CashBalance > hqCashBefore,
+            $"HQ should receive swept profit from storage sales. Before: {hqCashBefore}, After: {hq.CashBalance}");
     }
 
     [Fact]

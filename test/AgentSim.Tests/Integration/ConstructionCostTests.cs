@@ -46,14 +46,19 @@ public class ConstructionCostTests
     }
 
     [Fact]
-    public void PlaceIndustrialStructure_DeductsConstructionCost()
+    public void PlaceIndustrialStructure_DeductsFromHqCashNotTreasury()
     {
+        // M12: industrial construction is funded by the parent CorporateHq, not the city treasury.
         var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 1_000_000 });
-        var before = sim.State.City.TreasuryBalance;
+        var commZone = sim.CreateCommercialZone();
+        var hq = sim.PlaceCorporateHq(commZone.Id, IndustryType.Forestry, "TestCo");
+        var treasuryBefore = sim.State.City.TreasuryBalance;
+        var hqCashBefore = hq.CashBalance;
 
-        sim.PlaceIndustrialStructure(StructureType.ForestExtractor);
+        sim.PlaceIndustrialStructure(StructureType.ForestExtractor, hq.Id);
 
-        Assert.Equal(before - Construction.ForestExtractor, sim.State.City.TreasuryBalance);
+        Assert.Equal(treasuryBefore, sim.State.City.TreasuryBalance);  // city treasury unchanged
+        Assert.Equal(hqCashBefore - Construction.ForestExtractor, hq.CashBalance);
     }
 
     [Fact]

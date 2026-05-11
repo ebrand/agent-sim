@@ -28,8 +28,12 @@ public static class CostOfLivingMechanic
     /// <summary>Fires on day 30 (before the end-of-month emigration check).</summary>
     public static void RunMonthlyCol(SimState state)
     {
+        // M12: CorporateHq is in the Commercial category but is NOT consumer-facing — it's a
+        // holding company for industrial subsidiaries, not a retail outlet. Exclude it from
+        // COL distribution (agents can't buy household goods from Big Oil HQ).
         var commercials = state.City.Structures.Values
             .Where(s => s.Category == StructureCategory.Commercial
+                        && s.Type != StructureType.CorporateHq
                         && s.Operational
                         && !s.Inactive)
             .ToList();

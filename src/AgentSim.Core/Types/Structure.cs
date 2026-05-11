@@ -75,5 +75,18 @@ public sealed class Structure
     /// <summary>Service capacity in agents served per month (civic / healthcare / utility). 0 for non-service.</summary>
     public int ServiceCapacity { get; init; }
 
+    /// <summary>Optional flavor name (M12 CorporateHq: "ExxonMobil"-style label; null for others).</summary>
+    public string? Name { get; init; }
+
+    /// <summary>The industry this CorporateHq belongs to. Null for non-HQ structures.</summary>
+    public IndustryType? Industry { get; init; }
+
+    /// <summary>The CorporateHq that owns this industrial structure. Null for non-industrial or
+    /// for the HQ itself.</summary>
+    public long? OwnerHqId { get; set; }
+
+    /// <summary>IDs of industrial structures this HQ owns. Empty for non-HQ.</summary>
+    public List<long> OwnedStructureIds { get; } = new();
+
     public StructureCategory Category => Type.Category();
 }

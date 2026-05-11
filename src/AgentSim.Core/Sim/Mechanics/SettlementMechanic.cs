@@ -77,9 +77,14 @@ public static class SettlementMechanic
         CostOfLivingMechanic.RunMonthlyCol(state);
 
         // 5. Sales tax (commercial → treasury). Uses MonthlyRevenue accumulated in step 4.
+        //    M12: CorporateHq is exempt from sales tax — its swept-up profit is taxed separately
+        //    via the corporate-profit tax in CorporateProfitMechanic to avoid double taxation.
         foreach (var structure in state.City.Structures.Values)
         {
-            if (structure.Category == StructureCategory.Commercial && structure.Operational && !structure.Inactive)
+            if (structure.Category == StructureCategory.Commercial
+                && structure.Operational
+                && !structure.Inactive
+                && structure.Type != StructureType.CorporateHq)
             {
                 PaySalesTax(state, structure);
             }
@@ -93,7 +98,13 @@ public static class SettlementMechanic
         }
 
         // 7. End-of-month profitability check (uses fully-populated MonthlyRevenue / MonthlyExpenses).
+        //    CorporateHq is exempt (per M12) — its failure mode is running out of cash, not
+        //    accumulated unprofitable months.
         StructureProfitabilityMechanic.EndOfMonthCheck(state);
+
+        // 7b. M12: sweep industrial profits to parent HQ and pay corporate-profit tax to treasury.
+        //     Runs AFTER the profitability check (which reads raw R/E) and BEFORE the reset.
+        CorporateProfitMechanic.SweepAndTax(state);
 
         // Reset monthly accumulators for next month.
         foreach (var structure in state.City.Structures.Values)

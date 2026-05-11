@@ -7,10 +7,38 @@ namespace AgentSim.Tests.Integration;
 
 public class ProfitabilityTests
 {
+    /// <summary>
+    /// Pick the first industry that allows this structure type and return / create a matching HQ.
+    /// Multi-industry tests get multiple HQs (one per industry touched), each overfunded for
+    /// test convenience.
+    /// </summary>
+    private static long EnsureHqForType(Sim sim, StructureType type)
+    {
+        IndustryType? required = null;
+        foreach (IndustryType i in Enum.GetValues<IndustryType>())
+        {
+            if (Industry.Allows(i, type)) { required = i; break; }
+        }
+        if (required is not IndustryType industry)
+            throw new InvalidOperationException($"No industry allows {type}");
+
+        var existing = sim.State.City.Structures.Values
+            .FirstOrDefault(s => s.Type == StructureType.CorporateHq && s.Industry == industry);
+        if (existing != null) return existing.Id;
+
+        var commZone = sim.State.City.Zones.Values.FirstOrDefault(z => z.Type == ZoneType.Commercial)
+            ?? sim.CreateCommercialZone();
+        var hq = sim.PlaceCorporateHq(commZone.Id, industry, $"TestCo-{industry}");
+        hq.ConstructionTicks = hq.RequiredConstructionTicks;
+        hq.CashBalance = 50_000_000;
+        return hq.Id;
+    }
+
     /// <summary>Helper to place an operational industrial structure with full staffing.</summary>
     private static Structure PlaceFullyStaffed(Sim sim, StructureType type, int seedCash = 100_000)
     {
-        var s = sim.PlaceIndustrialStructure(type);
+        var hqId = EnsureHqForType(sim, type);
+        var s = sim.PlaceIndustrialStructure(type, hqId);
         s.ConstructionTicks = s.RequiredConstructionTicks;
         s.CashBalance = seedCash;
         foreach (var (tier, count) in s.JobSlots)

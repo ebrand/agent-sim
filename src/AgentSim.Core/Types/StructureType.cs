@@ -15,6 +15,7 @@ public enum StructureType
     // Commercial
     Shop,
     Marketplace,
+    CorporateHq,  // M12: industrial supply chain headquarters
 
     // Industrial — extractors
     ForestExtractor,
@@ -91,7 +92,8 @@ public static class StructureTypeExtensions
         StructureType.House or StructureType.Apartment or StructureType.Townhouse
             or StructureType.Condo or StructureType.AffordableHousing => StructureCategory.Residential,
 
-        StructureType.Shop or StructureType.Marketplace => StructureCategory.Commercial,
+        StructureType.Shop or StructureType.Marketplace
+            or StructureType.CorporateHq => StructureCategory.Commercial,
 
         StructureType.ForestExtractor or StructureType.Mine or StructureType.CoalMine
             or StructureType.Quarry or StructureType.SandPit or StructureType.Farm => StructureCategory.IndustrialExtractor,

@@ -55,12 +55,20 @@ public static class StructureProfitabilityMechanic
         }
     }
 
-    private static bool IsProfitabilityTracked(Structure s) =>
-        s.Category == StructureCategory.Commercial
-        || s.Category == StructureCategory.IndustrialExtractor
-        || s.Category == StructureCategory.IndustrialProcessor
-        || s.Category == StructureCategory.IndustrialManufacturer
-        || s.Category == StructureCategory.IndustrialStorage;
+    private static bool IsProfitabilityTracked(Structure s)
+    {
+        // M12: CorporateHq is exempt from the 2-month-unprofitable check. An HQ's failure mode
+        // is running out of cash (it carries startup capital that can absorb several months of
+        // losses before the chain becomes profitable). A future milestone may add an explicit
+        // "HQ bankruptcy" check.
+        if (s.Type == StructureType.CorporateHq) return false;
+
+        return s.Category == StructureCategory.Commercial
+            || s.Category == StructureCategory.IndustrialExtractor
+            || s.Category == StructureCategory.IndustrialProcessor
+            || s.Category == StructureCategory.IndustrialManufacturer
+            || s.Category == StructureCategory.IndustrialStorage;
+    }
 
     private static void GoInactive(SimState state, Structure structure)
     {

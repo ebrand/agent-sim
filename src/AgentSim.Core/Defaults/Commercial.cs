@@ -26,6 +26,10 @@ public static class Commercial
             [EducationTier.Primary] = 5,
             [EducationTier.Uneducated] = 5,
         },
+        // M12: CorporateHq has no employees in the headquarters itself — it's a holding/admin
+        // abstraction. Its industrial subordinates carry their own job slots. Future milestones
+        // could add white-collar HQ staff.
+        StructureType.CorporateHq => new Dictionary<EducationTier, int>(),
         _ => throw new ArgumentOutOfRangeException(nameof(type), $"{type} is not a commercial structure"),
     };
 
@@ -37,6 +41,7 @@ public static class Commercial
     {
         StructureType.Shop => 200_000,
         StructureType.Marketplace => 400_000,
+        StructureType.CorporateHq => 500_000,  // M12: tax base for HQ property tax
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 
@@ -45,6 +50,7 @@ public static class Commercial
     {
         StructureType.Shop => 2_000,
         StructureType.Marketplace => 4_000,
+        StructureType.CorporateHq => 5_000,  // M12: HQ office utility
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 

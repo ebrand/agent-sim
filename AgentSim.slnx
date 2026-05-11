@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AgentSim.Console/AgentSim.Console.csproj" />
+    <Project Path="src/AgentSim.Core/AgentSim.Core.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/AgentSim.Tests/AgentSim.Tests.csproj" />
+  </Folder>
+</Solution>

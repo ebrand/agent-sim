@@ -1,0 +1,28 @@
+using AgentSim.Core.Rng;
+
+namespace AgentSim.Core.Types;
+
+/// <summary>
+/// Root simulation state. Everything mutable lives here (or under Region/City).
+/// </summary>
+public sealed class SimState
+{
+    public required Region Region { get; init; }
+    public required City City { get; init; }
+    public required Prng Prng { get; init; }
+
+    /// <summary>Day count from sim start. 1 tick = 1 day.</summary>
+    public int CurrentTick { get; set; }
+
+    /// <summary>Whether the bootstrap settler burst has fired (only triggers once, on first residential zone creation).</summary>
+    public bool BootstrapFired { get; set; }
+
+    // ID counters
+    private long _nextAgentId = 1;
+    private long _nextStructureId = 1;
+    private long _nextZoneId = 1;
+
+    public long AllocateAgentId() => _nextAgentId++;
+    public long AllocateStructureId() => _nextStructureId++;
+    public long AllocateZoneId() => _nextZoneId++;
+}

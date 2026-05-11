@@ -34,6 +34,13 @@ public static class AgingMechanic
             residence.ResidentIds.Remove(agent.Id);
         }
 
+        // Vacate school seat (if any). M8: schools track EnrolledStudentIds.
+        if (agent.EnrolledStructureId is long schoolId
+            && state.City.Structures.TryGetValue(schoolId, out var school))
+        {
+            school.EnrolledStudentIds.Remove(agent.Id);
+        }
+
         // Vacate employment (if any). Decrement FilledSlots for the exact tier the agent
         // was hired into (CurrentJobTier), not EducationTier — over-qualified agents would
         // otherwise decrement the wrong bucket.

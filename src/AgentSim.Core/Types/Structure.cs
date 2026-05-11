@@ -65,5 +65,11 @@ public sealed class Structure
     /// <summary>Capacity of internal storage for raw / processed / manufactured goods (single shared cap per type).</summary>
     public int InternalStorageCapacity { get; init; }
 
+    /// <summary>Number of student seats (education structures). 0 for non-education.</summary>
+    public int SeatCapacity { get; init; }
+
+    /// <summary>IDs of agents currently enrolled in this education structure.</summary>
+    public List<long> EnrolledStudentIds { get; } = new();
+
     public StructureCategory Category => Type.Category();
 }

@@ -123,6 +123,34 @@ public sealed class Sim
     }
 
     /// <summary>
+    /// Manually place an education structure (primary school / secondary school / college).
+    /// Education structures sit outside zones and start a 90-tick construction. Once operational,
+    /// they offer seats for school-aged agents to enroll.
+    /// </summary>
+    public Structure PlaceEducationStructure(StructureType type)
+    {
+        if (type != StructureType.PrimarySchool
+            && type != StructureType.SecondarySchool
+            && type != StructureType.College)
+        {
+            throw new ArgumentException($"{type} is not an education structure type", nameof(type));
+        }
+
+        var structure = new Structure
+        {
+            Id = State.AllocateStructureId(),
+            Type = type,
+            ZoneId = 0,
+            ResidentialCapacity = 0,
+            ConstructionTicks = 0,
+            RequiredConstructionTicks = 90,
+            SeatCapacity = Defaults.Education.SeatCapacityFor(type),
+        };
+        State.City.Structures[structure.Id] = structure;
+        return structure;
+    }
+
+    /// <summary>
     /// Manually place a commercial structure in a commercial zone. The structure begins construction
     /// (90 ticks) and is operational once construction completes.
     /// </summary>
@@ -170,6 +198,7 @@ public sealed class Sim
             ConstructionMechanic.AdvanceConstruction(State);
             CommercialOperationMechanic.HireForNewlyOperationalStructures(State);
             IndustrialProductionMechanic.RunDaily(State);
+            EducationMechanic.RunDaily(State);
 
             // Periodic settlements (fires on days 1, 8, 15, 22, 30)
             SettlementMechanic.RunDailySettlements(State);

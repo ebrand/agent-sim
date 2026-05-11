@@ -30,4 +30,12 @@ public sealed class Agent
 
     /// <summary>Whether the agent has used their one-time affordable-housing move attempt this shortfall episode.</summary>
     public bool AffordableHousingAttemptUsed { get; set; }
+
+    /// <summary>School the agent is currently enrolled in (null when not a student). Tracks the
+    /// in-progress tier — once they complete, this is cleared and EducationTier is incremented.</summary>
+    public long? EnrolledStructureId { get; set; }
+
+    /// <summary>Days the agent has attended their current school tier. Resets to 0 on each new enrollment.
+    /// When this hits the per-tier required duration, the agent completes that tier.</summary>
+    public int EducationProgressDays { get; set; }
 }

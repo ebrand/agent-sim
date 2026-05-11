@@ -80,6 +80,15 @@ public static class EmigrationMechanic
             residence.ResidentIds.Remove(agent.Id);
         }
 
+        // Vacate school seat (if any). M8: schools track EnrolledStudentIds. Emigration of a
+        // school-aged agent (rare — they typically have no wage and no insolvency check applies)
+        // would otherwise leave a stale seat.
+        if (agent.EnrolledStructureId is long schoolId
+            && state.City.Structures.TryGetValue(schoolId, out var school))
+        {
+            school.EnrolledStudentIds.Remove(agent.Id);
+        }
+
         // Vacate employment slot (if any). Use CurrentJobTier — the agent may be over-qualified
         // relative to EducationTier, and the slot bucket to decrement is whichever they were hired into.
         if (agent.EmployerStructureId is long empId

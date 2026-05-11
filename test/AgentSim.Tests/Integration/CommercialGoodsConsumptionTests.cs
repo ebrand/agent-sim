@@ -151,21 +151,22 @@ public class CommercialGoodsConsumptionTests
     }
 
     [Fact]
-    public void Storage_RevenueIncreases_FromCommercialSales()
+    public void HqReceivesRevenue_FromCommercialSales()
     {
-        // Storage should track MonthlyRevenue from commercial sales (in addition to existing
-        // sale-to-regional treasury flow).
+        // M13: storage sales route revenue to its owning HQ, not the storage itself.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var commZone = sim.CreateCommercialZone();
         PlaceOperationalShop(sim, commZone.Id);
         var storage = SeedStorageWithGoods(sim, foodUnits: 10_000);
+        var hq = sim.State.City.Structures[storage.OwnerHqId!.Value];
 
-        sim.Tick(15);  // mid-month, before settlement reset
+        sim.Tick(15);  // mid-month
 
-        // Storage should have positive MonthlyRevenue from commercial sales
-        // (Note: storage also sells to regional treasury on excess; we just verify commercial revenue exists)
-        Assert.True(storage.MonthlyRevenue > 0, "Storage should have received revenue from commercial purchases");
+        Assert.True(hq.MonthlyRevenue > 0,
+            $"HQ should have received revenue from commercial purchases. Got {hq.MonthlyRevenue}.");
+        // Storage itself is a cost center under M13 — its own revenue stays at 0.
+        Assert.Equal(0, storage.MonthlyRevenue);
     }
 
     [Fact]

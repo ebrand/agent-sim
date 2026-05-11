@@ -158,9 +158,10 @@ public static class SettlementMechanic
 
     private static void PayIndustrialUtilities(SimState state, Structure structure)
     {
+        // M13: consolidated industrial model — utility cost charged to the owning HQ (the chain
+        // is one company's books). Treasury still collects the utility either way.
         var utility = Industrial.MonthlyUtility(structure.Type);
-        structure.CashBalance -= utility;
-        structure.MonthlyExpenses += utility;
+        IndustrialProductionMechanic.ChargeExpenseToHqOrSelf(state, structure, utility);
         state.City.TreasuryBalance += utility;
     }
 
@@ -178,9 +179,9 @@ public static class SettlementMechanic
         var tax = (int)(gross * TaxRates.IncomeTax);
         var net = gross - tax;
 
-        // Outflow from employer's cash balance
-        employer.CashBalance -= gross;
-        employer.MonthlyExpenses += gross;
+        // M13: industrial employers route wage expense to the owning HQ (the chain's payroll is
+        // paid by the company HQ). Commercial / non-HQ-owned structures pay their own wages.
+        IndustrialProductionMechanic.ChargeExpenseToHqOrSelf(state, employer, gross);
 
         // Inflow to agent (net) + treasury (tax)
         agent.Savings += net;
@@ -201,8 +202,8 @@ public static class SettlementMechanic
         var value = StructureValueLookup(structure);
         var tax = (int)(value * TaxRates.PropertyTaxMonthly);
         if (tax <= 0) return;
-        structure.CashBalance -= tax;
-        structure.MonthlyExpenses += tax;
+        // M13: industrial structures' property tax charges the owning HQ (if any).
+        IndustrialProductionMechanic.ChargeExpenseToHqOrSelf(state, structure, tax);
         state.City.TreasuryBalance += tax;
     }
 

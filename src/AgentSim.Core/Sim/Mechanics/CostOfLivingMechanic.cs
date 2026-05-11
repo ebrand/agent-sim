@@ -96,7 +96,7 @@ public static class CostOfLivingMechanic
         var actualCost = 0;
         var unitsRemaining = unitsDemanded;
 
-        // 1. Try local storage
+        // 1. Try local storage. M13: revenue routes to the storage's owning HQ if it has one.
         foreach (var storage in state.City.Structures.Values
                      .Where(s => s.Type == StructureType.Storage
                                  && s.Operational && !s.Inactive))
@@ -108,8 +108,7 @@ public static class CostOfLivingMechanic
 
             var cost = pull * unitPrice;
             storage.ManufacturedStorage[good] = available - pull;
-            storage.CashBalance += cost;
-            storage.MonthlyRevenue += cost;
+            IndustrialProductionMechanic.CreditRevenueToHqOrSelf(state, storage, cost);
             actualCost += cost;
             unitsRemaining -= pull;
         }

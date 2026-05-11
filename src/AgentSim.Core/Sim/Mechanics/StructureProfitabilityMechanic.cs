@@ -57,11 +57,13 @@ public static class StructureProfitabilityMechanic
 
     private static bool IsProfitabilityTracked(Structure s)
     {
-        // M12: CorporateHq is exempt from the 2-month-unprofitable check. An HQ's failure mode
-        // is running out of cash (it carries startup capital that can absorb several months of
-        // losses before the chain becomes profitable). A future milestone may add an explicit
-        // "HQ bankruptcy" check.
+        // M12: CorporateHq is exempt from the 2-month-unprofitable check.
         if (s.Type == StructureType.CorporateHq) return false;
+
+        // M13: HQ-owned industrial subs are consolidated into the HQ's P&L. Individual subs have
+        // no revenue (only expenses, all paid by the HQ), so they would always read unprofitable
+        // and go inactive — which would be wrong. Exempt them.
+        if (s.OwnerHqId is not null) return false;
 
         return s.Category == StructureCategory.Commercial
             || s.Category == StructureCategory.IndustrialExtractor

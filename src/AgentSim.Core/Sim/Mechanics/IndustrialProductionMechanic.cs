@@ -129,7 +129,8 @@ public static class IndustrialProductionMechanic
             .ToList();
         if (storages.Count == 0) return;
 
-        // For each storage, try to absorb manufactured goods from any manufacturer with output.
+        // M13: same-HQ goods transfer — no cash exchange. Goods just move from manufacturer to
+        // storage (both owned by the same parent company; the transfer is bookkeeping).
         foreach (var storage in storages)
         {
             foreach (var manufacturer in state.City.Structures.Values
@@ -147,16 +148,6 @@ public static class IndustrialProductionMechanic
                     var qty = Math.Min(available, canAccept);
                     if (qty <= 0) continue;
 
-                    var unitPrice = Industrial.ManufacturedGoodPrice(good);
-                    var purchasePrice = (int)(unitPrice * Industrial.StoragePassThroughRate) * qty;
-
-                    // Money: storage pays manufacturer
-                    storage.CashBalance -= purchasePrice;
-                    storage.MonthlyExpenses += purchasePrice;
-                    manufacturer.CashBalance += purchasePrice;
-                    manufacturer.MonthlyRevenue += purchasePrice;
-
-                    // Goods: manufacturer ships to storage
                     manufacturer.ManufacturedStorage[good] = available - qty;
                     storage.ManufacturedStorage[good] = stored + qty;
                 }
@@ -165,6 +156,7 @@ public static class IndustrialProductionMechanic
     }
 
     // === Storage sells overflow to regional treasury at full price ===
+    // M13: revenue accrues to the owning HQ, not the storage itself.
     private static void StorageSellOverflowToRegion(SimState state)
     {
         foreach (var storage in state.City.Structures.Values)
@@ -178,18 +170,51 @@ public static class IndustrialProductionMechanic
                 var qty = storage.ManufacturedStorage[good];
                 if (qty <= 0) continue;
 
-                // For M4: storage immediately sells all goods to regional treasury (infinite buyer).
-                // M5+ will route to commercial demand first, then overflow to region.
                 var unitPrice = Industrial.ManufacturedGoodPrice(good);
                 var sellPrice = unitPrice * qty;
 
-                storage.CashBalance += sellPrice;
-                storage.MonthlyRevenue += sellPrice;
+                CreditRevenueToHqOrSelf(state, storage, sellPrice);
                 storage.ManufacturedStorage[good] = 0;
-                // regional treasury is functionally infinite — money disappears into the regional layer.
+                // Regional treasury is functionally infinite — goods accumulate, no balance tracked.
                 state.Region.GoodsReservoir.TryGetValue(good, out var existing);
-                state.Region.GoodsReservoir[good] = existing + qty;  // track regional accumulation
+                state.Region.GoodsReservoir[good] = existing + qty;
             }
+        }
+    }
+
+    /// <summary>
+    /// Credit revenue to the structure's owning HQ if it has one (M13 consolidated industrial
+    /// model). Falls back to the structure itself for legacy / orphan industrial structures.
+    /// </summary>
+    internal static void CreditRevenueToHqOrSelf(SimState state, Structure structure, int amount)
+    {
+        if (structure.OwnerHqId is long hqId && state.City.Structures.TryGetValue(hqId, out var hq))
+        {
+            hq.CashBalance += amount;
+            hq.MonthlyRevenue += amount;
+        }
+        else
+        {
+            structure.CashBalance += amount;
+            structure.MonthlyRevenue += amount;
+        }
+    }
+
+    /// <summary>
+    /// Charge an expense to the structure's owning HQ if it has one, else to the structure itself.
+    /// M13 consolidated industrial model.
+    /// </summary>
+    internal static void ChargeExpenseToHqOrSelf(SimState state, Structure structure, int amount)
+    {
+        if (structure.OwnerHqId is long hqId && state.City.Structures.TryGetValue(hqId, out var hq))
+        {
+            hq.CashBalance -= amount;
+            hq.MonthlyExpenses += amount;
+        }
+        else
+        {
+            structure.CashBalance -= amount;
+            structure.MonthlyExpenses += amount;
         }
     }
 
@@ -203,7 +228,11 @@ public static class IndustrialProductionMechanic
         return (double)filled / totalSlots;
     }
 
-    /// <summary>Pull up to `unitsRequested` raw material units from any extractor's buffer. Pays them at `unitPrice`.</summary>
+    /// <summary>
+    /// Pull up to `unitsRequested` raw material units from any extractor's buffer. M13: goods only —
+    /// no cash transfer between same-HQ industrial structures. The unitPrice parameter is retained
+    /// for signature compatibility but unused.
+    /// </summary>
     private static int PullRawMaterial(SimState state, Structure buyer, RawMaterial material, int unitsRequested, int unitPrice)
     {
         var unitsPulled = 0;
@@ -217,22 +246,16 @@ public static class IndustrialProductionMechanic
             if (available <= 0) continue;
 
             var qty = Math.Min(available, unitsRequested - unitsPulled);
-            var total = qty * unitPrice;
-
-            // Money flow
-            buyer.CashBalance -= total;
-            buyer.MonthlyExpenses += total;
-            extractor.CashBalance += total;
-            extractor.MonthlyRevenue += total;
-
-            // Goods flow
             extractor.RawStorage[material] = available - qty;
             unitsPulled += qty;
         }
         return unitsPulled;
     }
 
-    /// <summary>Pull up to `unitsRequested` processed-good units from any processor's buffer. Pays at `unitPrice`.</summary>
+    /// <summary>
+    /// Pull up to `unitsRequested` processed-good units from any processor's buffer. M13: goods
+    /// only — no cash transfer between same-HQ industrial structures.
+    /// </summary>
     private static int PullProcessedGood(SimState state, Structure buyer, ProcessedGood good, int unitsRequested, int unitPrice)
     {
         var unitsPulled = 0;
@@ -246,13 +269,6 @@ public static class IndustrialProductionMechanic
             if (available <= 0) continue;
 
             var qty = Math.Min(available, unitsRequested - unitsPulled);
-            var total = qty * unitPrice;
-
-            buyer.CashBalance -= total;
-            buyer.MonthlyExpenses += total;
-            processor.CashBalance += total;
-            processor.MonthlyRevenue += total;
-
             processor.ProcessedStorage[good] = available - qty;
             unitsPulled += qty;
         }

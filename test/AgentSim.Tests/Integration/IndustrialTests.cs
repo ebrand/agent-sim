@@ -95,6 +95,8 @@ public class IndustrialTests
     [Fact]
     public void Sawmill_RequiresWoodInput_ProducesLumberWhenAvailable()
     {
+        // M13 consolidated model: no per-link cash flow between extractor and sawmill (same HQ
+        // owns both). Goods flow only. Test just verifies the goods chain works.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
 
@@ -106,10 +108,6 @@ public class IndustrialTests
 
         var lumberProduced = sawmill.ProcessedStorage.GetValueOrDefault(ProcessedGood.Lumber);
         Assert.True(lumberProduced > 0, $"Sawmill should have produced lumber. Got {lumberProduced}.");
-
-        // Money: sawmill paid extractor for wood
-        Assert.True(sawmill.MonthlyExpenses > 0, "Sawmill should have paid for wood");
-        Assert.True(extractor.MonthlyRevenue > 0, "Extractor should have received money for wood");
     }
 
     [Fact]
@@ -178,48 +176,45 @@ public class IndustrialTests
     }
 
     [Fact]
-    public void IndustrialStructure_PaysPropertyTaxOnDay30()
+    public void IndustrialStructure_PropertyTax_ChargedToHq()
     {
+        // M13: expense (property tax + utilities) charged to HQ, not the sub.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var extractor = PlaceAndOperationalize(sim, StructureType.ForestExtractor);
+        var hq = sim.State.City.Structures[extractor.OwnerHqId!.Value];
 
-        var cashBefore = extractor.CashBalance;
-        sim.Tick(30);  // full month
+        var hqCashBefore = hq.CashBalance;
+        var extractorCashBefore = extractor.CashBalance;
+        sim.Tick(30);  // monthly settlement
 
-        // Forest extractor pays $1,000 utility (day 15) + $400 property tax (day 30)
-        // Plus wages... but with no actual hired agents (test pre-fills FilledSlots only), no wages paid.
-        // CashBalance should drop by ~$1,400.
-        Assert.True(extractor.CashBalance < cashBefore,
-            $"Extractor should have paid expenses out of CashBalance. Before: {cashBefore}, After: {extractor.CashBalance}");
+        // Sub cash unchanged (HQ pays its bills).
+        Assert.Equal(extractorCashBefore, extractor.CashBalance);
+        // HQ paid utility + property tax (+ wages, none since no real agents).
+        Assert.True(hq.CashBalance < hqCashBefore,
+            $"HQ should have paid sub expenses. Before: {hqCashBefore}, After: {hq.CashBalance}");
     }
 
     [Fact]
-    public void Storage_HasMarginFromPassThroughFee()
+    public void Storage_SaleRevenueRoutesToHq()
     {
-        // Storage buys from manufacturer at 80% of mfg price, sells at 100%. 20% margin.
-        // At small chain scale (1 of each), throughput is too low for storage to be profitable
-        // — the 20% margin doesn't cover utilities ($1,000/mo) + property tax ($400/mo).
-        // Production limited to 2 household/day (10 lumber/day ÷ 5 lumber per household)
-        // = 60 household/month × $40 × 0.20 margin = $480/mo, less than $1,400 monthly cost.
-        //
-        // This test verifies the MARGIN MECHANIC is wired correctly: storage paid 80% of price
-        // to manufacturer (an expense) and received 100% from regional treasury (a revenue).
-        // The net cashflow is negative at this scale — that's expected, not a bug.
+        // M13: storage's sales to regional treasury (or commercial) route revenue to its owning
+        // HQ. Storage's own CashBalance is unchanged by sales.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
-        var manufacturer = PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
         PlaceAndOperationalize(sim, StructureType.ForestExtractor);
         PlaceAndOperationalize(sim, StructureType.Sawmill);
+        PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
         var storage = PlaceAndOperationalize(sim, StructureType.Storage);
+        var hq = sim.State.City.Structures[storage.OwnerHqId!.Value];
 
-        sim.Tick(15);  // mid-month, before settlement reset on day 30
+        var storageRevBefore = storage.MonthlyRevenue;
+        sim.Tick(15);  // mid-month
 
-        // Both money flows should have happened: storage paid manufacturer (expense) AND received from region (revenue)
-        Assert.True(storage.MonthlyExpenses > 0, "Storage should have paid manufacturer for goods");
-        Assert.True(storage.MonthlyRevenue > 0, "Storage should have received money from regional treasury");
-        // Manufacturer should have received money for goods
-        Assert.True(manufacturer.MonthlyRevenue > 0, "Manufacturer should have been paid by storage");
+        // Storage itself accrues no revenue (it's a cost center under M13).
+        Assert.Equal(storageRevBefore, storage.MonthlyRevenue);
+        // HQ records the chain's revenue.
+        Assert.True(hq.MonthlyRevenue > 0, $"HQ should have recorded chain revenue. Got {hq.MonthlyRevenue}.");
     }
 
     [Fact]

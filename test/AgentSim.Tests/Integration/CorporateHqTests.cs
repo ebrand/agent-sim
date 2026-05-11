@@ -126,49 +126,37 @@ public class CorporateHqTests
     }
 
     [Fact]
-    public void ProfitSweep_PositiveProfit_MovesToHq()
+    public void TaxesAppliedToHqProfit()
     {
+        // M13 consolidated model: HQ's MonthlyRevenue/Expenses already reflect the full chain's
+        // books (storage sales → HQ revenue; sub utilities/wages/property tax → HQ expenses).
+        // SweepAndTax just taxes the net.
         var (sim, hq) = NewSimWithHq(IndustryType.Forestry);
         hq.CashBalance = 10_000_000;
-        var extractor = sim.PlaceIndustrialStructure(StructureType.ForestExtractor, hq.Id);
-        extractor.ConstructionTicks = extractor.RequiredConstructionTicks;
-
-        // Synthesize a profitable month: revenue > expenses on the extractor.
-        extractor.MonthlyRevenue = 50_000;
-        extractor.MonthlyExpenses = 20_000;
-        extractor.CashBalance = 100_000;
+        hq.MonthlyRevenue = 50_000;
+        hq.MonthlyExpenses = 20_000;
         var hqCashBefore = hq.CashBalance;
 
         CorporateProfitMechanic.SweepAndTax(sim.State);
 
-        // Profit = 30k. Corporate tax = 25% = 7.5k. Externality tax (Forestry) = 10% = 3k.
-        // Total tax = 10.5k. HQ keeps 30k - 10.5k = 19.5k. Treasury gets 10.5k.
-        Assert.Equal(hqCashBefore + 30_000 - 10_500, hq.CashBalance);
-        Assert.Equal(100_000 - 30_000, extractor.CashBalance);  // profit moved up
-        Assert.Equal(30_000, hq.MonthlyRevenue);
+        // Profit = 30k. Corporate tax = 25% = 7.5k. Externality (Forestry) = 10% = 3k.
+        // Total tax = 10.5k. HQ pays the tax out of CashBalance.
+        Assert.Equal(hqCashBefore - 10_500, hq.CashBalance);
     }
 
     [Fact]
-    public void ProfitSweep_NegativeProfit_NotSwept()
+    public void NegativeProfit_NoTaxApplied()
     {
         var (sim, hq) = NewSimWithHq(IndustryType.Mining);
         hq.CashBalance = 1_000_000;
-        var mine = sim.PlaceIndustrialStructure(StructureType.Mine, hq.Id);
-        mine.ConstructionTicks = mine.RequiredConstructionTicks;
-
-        // Loss-making month.
-        mine.MonthlyRevenue = 5_000;
-        mine.MonthlyExpenses = 20_000;
-        mine.CashBalance = 100_000;
+        hq.MonthlyRevenue = 5_000;
+        hq.MonthlyExpenses = 20_000;
         var hqCashBefore = hq.CashBalance;
-        var mineCashBefore = mine.CashBalance;
 
         CorporateProfitMechanic.SweepAndTax(sim.State);
 
-        // Nothing swept (negative profit). Both balances unchanged.
+        // Loss month — no tax applied.
         Assert.Equal(hqCashBefore, hq.CashBalance);
-        Assert.Equal(mineCashBefore, mine.CashBalance);
-        Assert.Equal(0, hq.MonthlyRevenue);
     }
 
     [Fact]
@@ -176,11 +164,8 @@ public class CorporateHqTests
     {
         var (sim, hq) = NewSimWithHq(IndustryType.Stone);
         hq.CashBalance = 10_000_000;
-        var quarry = sim.PlaceIndustrialStructure(StructureType.Quarry, hq.Id);
-        quarry.ConstructionTicks = quarry.RequiredConstructionTicks;
-        quarry.MonthlyRevenue = 100_000;
-        quarry.MonthlyExpenses = 60_000;
-        quarry.CashBalance = 200_000;
+        hq.MonthlyRevenue = 100_000;
+        hq.MonthlyExpenses = 60_000;
 
         var treasuryBefore = sim.State.City.TreasuryBalance;
         CorporateProfitMechanic.SweepAndTax(sim.State);

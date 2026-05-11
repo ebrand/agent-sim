@@ -68,54 +68,82 @@ public class ProfitabilityTests
         Assert.False(storage.UnprofitableWarning, "Profitable storage should have no warning");
     }
 
+    /// <summary>
+    /// Synthesize a non-HQ-owned commercial structure to exercise the profitability mechanism
+    /// directly. After M13, industrial subs owned by an HQ are exempt from this check, so we
+    /// use a Shop (commercial, non-HQ).
+    /// </summary>
+    private static Structure SynthesizeUnprofitableShop(Sim sim)
+    {
+        var zone = sim.CreateCommercialZone();
+        var shop = new Structure
+        {
+            Id = sim.State.AllocateStructureId(),
+            Type = StructureType.Shop,
+            ZoneId = zone.Id,
+            ResidentialCapacity = 0,
+            ConstructionTicks = 7,
+            RequiredConstructionTicks = 7,
+            JobSlots = Commercial.JobSlots(StructureType.Shop).ToDictionary(kv => kv.Key, kv => kv.Value),
+        };
+        // Pre-seed unprofitable monthly state.
+        shop.MonthlyRevenue = 1_000;
+        shop.MonthlyExpenses = 5_000;
+        sim.State.City.Structures[shop.Id] = shop;
+        zone.StructureIds.Add(shop.Id);
+        return shop;
+    }
+
     [Fact]
     public void UnprofitableStructure_FirstMonth_SetsWarning()
     {
-        // Single-manufacturer storage: unprofitable scenario (storage costs > margin at small scale)
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-        PlaceFullyStaffed(sim, StructureType.ForestExtractor);
-        PlaceFullyStaffed(sim, StructureType.Sawmill);
-        PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
-        var storage = PlaceFullyStaffed(sim, StructureType.Storage);
+        // Test the profitability mechanism directly on a non-HQ commercial structure.
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 1_000_000 });
+        var shop = SynthesizeUnprofitableShop(sim);
 
-        sim.Tick(30);  // 1 month, profitability check fires at tick 30
+        StructureProfitabilityMechanic.EndOfMonthCheck(sim.State);
 
-        Assert.True(storage.UnprofitableWarning, "Storage should have UnprofitableWarning after 1 unprofitable month");
-        Assert.False(storage.Inactive, "Storage should NOT yet be inactive after only 1 unprofitable month");
+        Assert.True(shop.UnprofitableWarning, "Shop should have UnprofitableWarning after 1 unprofitable month");
+        Assert.False(shop.Inactive, "Shop should NOT yet be inactive after only 1 unprofitable month");
     }
 
     [Fact]
     public void UnprofitableStructure_TwoConsecutiveMonths_GoesInactive()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-        PlaceFullyStaffed(sim, StructureType.ForestExtractor);
-        PlaceFullyStaffed(sim, StructureType.Sawmill);
-        PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
-        var storage = PlaceFullyStaffed(sim, StructureType.Storage);
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 1_000_000 });
+        var shop = SynthesizeUnprofitableShop(sim);
 
-        sim.Tick(60);  // 2 months, both unprofitable
+        // Month 1: sets warning
+        StructureProfitabilityMechanic.EndOfMonthCheck(sim.State);
+        Assert.True(shop.UnprofitableWarning);
+        Assert.False(shop.Inactive);
 
-        Assert.True(storage.Inactive, "Storage should be inactive after 2 consecutive unprofitable months");
+        // Month 2: still unprofitable → goes inactive
+        shop.MonthlyRevenue = 1_000;
+        shop.MonthlyExpenses = 5_000;
+        StructureProfitabilityMechanic.EndOfMonthCheck(sim.State);
+
+        Assert.True(shop.Inactive, "Shop should be inactive after 2 consecutive unprofitable months");
     }
 
     [Fact]
     public void InactiveStructure_HasNoEmployees()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-        PlaceFullyStaffed(sim, StructureType.ForestExtractor);
-        PlaceFullyStaffed(sim, StructureType.Sawmill);
-        PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
-        var storage = PlaceFullyStaffed(sim, StructureType.Storage);
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 1_000_000 });
+        var shop = SynthesizeUnprofitableShop(sim);
+        // Force a fake employee on the shop so we can verify it's laid off.
+        shop.FilledSlots[EducationTier.Primary] = 1;
+        shop.EmployeeIds.Add(99999);
 
-        sim.Tick(60);  // goes inactive
+        // Two unprofitable months → inactive → employees laid off.
+        StructureProfitabilityMechanic.EndOfMonthCheck(sim.State);
+        shop.MonthlyRevenue = 1_000;
+        shop.MonthlyExpenses = 5_000;
+        StructureProfitabilityMechanic.EndOfMonthCheck(sim.State);
 
-        Assert.True(storage.Inactive);
-        Assert.Empty(storage.EmployeeIds);
-        // FilledSlots dictionary may still exist; the sum should be 0
-        Assert.Equal(0, storage.FilledSlots.Values.Sum());
+        Assert.True(shop.Inactive);
+        Assert.Empty(shop.EmployeeIds);
+        Assert.Equal(0, shop.FilledSlots.Values.Sum());
     }
 
     [Fact]
@@ -141,20 +169,21 @@ public class ProfitabilityTests
     [Fact]
     public void InactiveStructure_AutoReactivatesAfterOneMonth()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-        PlaceFullyStaffed(sim, StructureType.ForestExtractor);
-        PlaceFullyStaffed(sim, StructureType.Sawmill);
-        PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
-        var storage = PlaceFullyStaffed(sim, StructureType.Storage);
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 1_000_000 });
+        var shop = SynthesizeUnprofitableShop(sim);
 
-        sim.Tick(60);  // goes inactive
-        Assert.True(storage.Inactive);
+        // Two unprofitable months → inactive.
+        StructureProfitabilityMechanic.EndOfMonthCheck(sim.State);
+        shop.MonthlyRevenue = 1_000;
+        shop.MonthlyExpenses = 5_000;
+        StructureProfitabilityMechanic.EndOfMonthCheck(sim.State);
+        Assert.True(shop.Inactive);
 
-        sim.Tick(30);  // 1 month inactive → auto-reactivates at end of this month
+        // One inactive month → auto-reactivate.
+        StructureProfitabilityMechanic.EndOfMonthCheck(sim.State);
 
-        Assert.False(storage.Inactive, "Storage should auto-reactivate after 1 inactive month");
-        Assert.Equal(0, storage.InactiveMonths);
+        Assert.False(shop.Inactive, "Shop should auto-reactivate after 1 inactive month");
+        Assert.Equal(0, shop.InactiveMonths);
     }
 
     [Fact]

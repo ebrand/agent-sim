@@ -18,7 +18,7 @@ public class ConstructionCostTests
 
         sim.PlaceServiceStructure(StructureType.PoliceStation);
 
-        Assert.Equal(before - Construction.PoliceStation, sim.State.City.TreasuryBalance);
+        Assert.Equal(before - Construction.Cost(StructureType.PoliceStation), sim.State.City.TreasuryBalance);
     }
 
     [Fact]
@@ -29,7 +29,7 @@ public class ConstructionCostTests
 
         sim.PlaceEducationStructure(StructureType.PrimarySchool);
 
-        Assert.Equal(before - Construction.PrimarySchool, sim.State.City.TreasuryBalance);
+        Assert.Equal(before - Construction.Cost(StructureType.PrimarySchool), sim.State.City.TreasuryBalance);
     }
 
     [Fact]
@@ -120,37 +120,52 @@ public class ConstructionCostTests
         sim.PlaceServiceStructure(StructureType.Generator);
         sim.PlaceServiceStructure(StructureType.Well);
 
-        var totalConstruction = Construction.PoliceStation + Construction.Clinic
-            + Construction.PrimarySchool + Construction.Generator + Construction.Well;
+        var totalConstruction = Construction.Cost(StructureType.PoliceStation)
+            + Construction.Cost(StructureType.Clinic)
+            + Construction.Cost(StructureType.PrimarySchool)
+            + Construction.Cost(StructureType.Generator)
+            + Construction.Cost(StructureType.Well);
         Assert.Equal(1_150_000, totalConstruction);  // sanity-check on the calibration
         Assert.Equal(1_800_000 - totalConstruction, sim.State.City.TreasuryBalance);
         Assert.True(sim.State.City.TreasuryBalance > 0);
     }
 
     [Fact]
-    public void Cost_TableIsConsistentWithUpkeepRatio()
+    public void Construction_UsesPerTypeMultiplier()
     {
-        // Sanity-check: construction is ~10× monthly upkeep for treasury-funded structures.
-        // (Allow a ±20% band to accommodate rounding.)
-        var pairs = new (StructureType type, int upkeep, int construction)[]
+        // Per M11: each structure type defines its own construction multiplier (× monthly upkeep)
+        // to reflect capital-intensity. Most institutional buildings are 10×; affordable housing
+        // is 2× as a residential-style social-infrastructure exception.
+        var expected = new (StructureType type, int multiplier)[]
         {
-            (StructureType.PoliceStation, Upkeep.PoliceStation, Construction.PoliceStation),
-            (StructureType.FireStation, Upkeep.FireStation, Construction.FireStation),
-            (StructureType.TownHall, Upkeep.TownHall, Construction.TownHall),
-            (StructureType.Clinic, Upkeep.Clinic, Construction.Clinic),
-            (StructureType.Hospital, Upkeep.Hospital, Construction.Hospital),
-            (StructureType.PrimarySchool, Upkeep.PrimarySchool, Construction.PrimarySchool),
-            (StructureType.SecondarySchool, Upkeep.SecondarySchool, Construction.SecondarySchool),
-            (StructureType.College, Upkeep.College, Construction.College),
-            (StructureType.Generator, Upkeep.Generator, Construction.Generator),
-            (StructureType.Well, Upkeep.Well, Construction.Well),
-            (StructureType.AffordableHousing, Upkeep.AffordableHousing, Construction.AffordableHousing),
+            (StructureType.PoliceStation, 10),
+            (StructureType.FireStation, 10),
+            (StructureType.TownHall, 10),
+            (StructureType.Clinic, 10),
+            (StructureType.Hospital, 10),
+            (StructureType.PrimarySchool, 10),
+            (StructureType.SecondarySchool, 10),
+            (StructureType.College, 10),
+            (StructureType.Generator, 10),
+            (StructureType.Well, 10),
+            (StructureType.AffordableHousing, 2),  // intentionally cheaper to build
         };
 
-        foreach (var (type, upkeep, construction) in pairs)
+        foreach (var (type, expectedMultiplier) in expected)
         {
-            var ratio = (double)construction / upkeep;
-            Assert.InRange(ratio, 8.0, 12.0);
+            Assert.Equal(expectedMultiplier, Construction.Multiplier(type));
+            // And Cost matches upkeep × multiplier.
+            Assert.Equal(Upkeep.MonthlyCost(type) * expectedMultiplier, Construction.Cost(type));
         }
+    }
+
+    [Fact]
+    public void AffordableHousing_HasCheaperConstructionThanInstitutional()
+    {
+        // Per design: AH is residential-style construction. Even though upkeep can be similar to
+        // other treasury-funded structures, the construction cost should be lower.
+        Assert.True(Construction.Cost(StructureType.AffordableHousing)
+            < Construction.Cost(StructureType.Clinic),
+            "Affordable housing should cost less to build than a clinic (residential vs institutional).");
     }
 }

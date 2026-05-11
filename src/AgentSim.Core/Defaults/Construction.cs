@@ -4,34 +4,26 @@ namespace AgentSim.Core.Defaults;
 
 /// <summary>
 /// One-time construction cost per structure type, deducted from the city treasury at placement.
-/// Per design discussion (M11): capital expense should dominate operating expense — roughly 10×
-/// monthly upkeep for treasury-funded structures. This makes placement a real decision and prevents
-/// spam-building. Commercial / industrial pick numbers by category scale.
+/// Per design discussion (M11): each structure type defines its own upkeep AND its own
+/// construction multiplier. Treasury-funded structures compute cost = monthly upkeep × multiplier,
+/// where the multiplier reflects how capital-intensive that building type is.
 ///
-/// Placement is rejected (throws InvalidOperationException) when treasury can't cover the cost —
-/// the city can't start a building it can't afford. Residential is exempt: it auto-spawns inside
-/// zones and is not user-placed.
+///   - Most institutional buildings (police, fire, schools, hospitals, utilities): 10× — big
+///     capital outlay relative to operating budget.
+///   - Affordable housing: 2× — residential-style construction, cheap to build, expensive to
+///     run as social infrastructure.
+///
+/// Commercial / industrial structures have no monthly upkeep (they fund themselves via revenue),
+/// so they use flat construction costs sized by category scale.
+///
+/// Placement is rejected (throws InvalidOperationException) when treasury can't cover the cost.
+/// Residential is exempt (auto-spawned in zones, not user-placed).
 /// </summary>
 public static class Construction
 {
-    // Treasury-funded (~10× monthly upkeep)
-    public const int PoliceStation = 150_000;
-    public const int FireStation = 150_000;
-    public const int TownHall = 500_000;
-    public const int Clinic = 250_000;
-    public const int Hospital = 1_200_000;
-    public const int PrimarySchool = 250_000;
-    public const int SecondarySchool = 500_000;
-    public const int College = 1_000_000;
-    public const int Generator = 300_000;
-    public const int Well = 200_000;
-    public const int AffordableHousing = 100_000;
-
-    // Commercial (no upkeep — revenue-funded; sized by relative gameplay scale)
+    // Flat costs for commercial / industrial (no monthly upkeep to derive from).
     public const int Shop = 100_000;
     public const int Marketplace = 300_000;
-
-    // Industrial — extractors / processors / manufacturers / storage
     public const int ForestExtractor = 150_000;
     public const int Mine = 150_000;
     public const int CoalMine = 150_000;
@@ -55,45 +47,69 @@ public static class Construction
     public const int FuelStorage = 150_000;
 
     /// <summary>
-    /// One-time construction cost in dollars for the given structure type. 0 for residential
-    /// (auto-spawned, not user-placed) and any type without a specified cost.
+    /// Construction multiplier (× monthly upkeep) for treasury-funded structures. Lets each
+    /// structure type set its own capital-to-operating ratio. Returns 0 for non-treasury-funded.
     /// </summary>
-    public static int Cost(StructureType type) => type switch
+    public static int Multiplier(StructureType type) => type switch
     {
-        StructureType.PoliceStation => PoliceStation,
-        StructureType.FireStation => FireStation,
-        StructureType.TownHall => TownHall,
-        StructureType.Clinic => Clinic,
-        StructureType.Hospital => Hospital,
-        StructureType.PrimarySchool => PrimarySchool,
-        StructureType.SecondarySchool => SecondarySchool,
-        StructureType.College => College,
-        StructureType.Generator => Generator,
-        StructureType.Well => Well,
-        StructureType.AffordableHousing => AffordableHousing,
-        StructureType.Shop => Shop,
-        StructureType.Marketplace => Marketplace,
-        StructureType.ForestExtractor => ForestExtractor,
-        StructureType.Mine => Mine,
-        StructureType.CoalMine => CoalMine,
-        StructureType.Quarry => Quarry,
-        StructureType.SandPit => SandPit,
-        StructureType.Farm => Farm,
-        StructureType.Sawmill => Sawmill,
-        StructureType.Smelter => Smelter,
-        StructureType.Mill => Mill,
-        StructureType.AggregatePlant => AggregatePlant,
-        StructureType.SilicatePlant => SilicatePlant,
-        StructureType.FuelRefinery => FuelRefinery,
-        StructureType.HouseholdFactory => HouseholdFactory,
-        StructureType.BldgSuppliesFactory => BldgSuppliesFactory,
-        StructureType.MetalGoodsFactory => MetalGoodsFactory,
-        StructureType.FoodPackingPlant => FoodPackingPlant,
-        StructureType.ClothingFactory => ClothingFactory,
-        StructureType.ConcretePlant => ConcretePlant,
-        StructureType.GlassWorks => GlassWorks,
-        StructureType.Storage => Storage,
-        StructureType.FuelStorage => FuelStorage,
-        _ => 0,  // residential (auto-spawned), restoration (TBD), others not yet costed
+        // Big capital outlay for institutional buildings.
+        StructureType.PoliceStation => 10,
+        StructureType.FireStation => 10,
+        StructureType.TownHall => 10,
+        StructureType.Clinic => 10,
+        StructureType.Hospital => 10,
+        StructureType.PrimarySchool => 10,
+        StructureType.SecondarySchool => 10,
+        StructureType.College => 10,
+        StructureType.Generator => 10,
+        StructureType.Well => 10,
+
+        // Lighter construction for residential-style social infrastructure.
+        StructureType.AffordableHousing => 2,
+
+        _ => 0,
     };
+
+    /// <summary>
+    /// One-time construction cost in dollars for the given structure type. Computed as
+    /// monthly upkeep × multiplier for treasury-funded structures; flat values for commercial /
+    /// industrial. Returns 0 for residential (auto-spawned) and any type without a cost.
+    /// </summary>
+    public static int Cost(StructureType type)
+    {
+        // Treasury-funded: cost derives from upkeep × multiplier.
+        if (Upkeep.IsTreasuryFunded(type))
+        {
+            return Upkeep.MonthlyCost(type) * Multiplier(type);
+        }
+
+        // Commercial / industrial: flat values.
+        return type switch
+        {
+            StructureType.Shop => Shop,
+            StructureType.Marketplace => Marketplace,
+            StructureType.ForestExtractor => ForestExtractor,
+            StructureType.Mine => Mine,
+            StructureType.CoalMine => CoalMine,
+            StructureType.Quarry => Quarry,
+            StructureType.SandPit => SandPit,
+            StructureType.Farm => Farm,
+            StructureType.Sawmill => Sawmill,
+            StructureType.Smelter => Smelter,
+            StructureType.Mill => Mill,
+            StructureType.AggregatePlant => AggregatePlant,
+            StructureType.SilicatePlant => SilicatePlant,
+            StructureType.FuelRefinery => FuelRefinery,
+            StructureType.HouseholdFactory => HouseholdFactory,
+            StructureType.BldgSuppliesFactory => BldgSuppliesFactory,
+            StructureType.MetalGoodsFactory => MetalGoodsFactory,
+            StructureType.FoodPackingPlant => FoodPackingPlant,
+            StructureType.ClothingFactory => ClothingFactory,
+            StructureType.ConcretePlant => ConcretePlant,
+            StructureType.GlassWorks => GlassWorks,
+            StructureType.Storage => Storage,
+            StructureType.FuelStorage => FuelStorage,
+            _ => 0,
+        };
+    }
 }

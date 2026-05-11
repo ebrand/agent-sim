@@ -128,19 +128,19 @@ public class IndustrialTests
     }
 
     [Fact]
-    public void IndustrialStructure_PaysUtilitiesOnDay15()
+    public void IndustrialStructure_PaysUtilitiesMonthly()
     {
+        // Under Option A, all flows happen on day 30. Verify industrial utilities flow to treasury.
         var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 0 });
         sim.CreateResidentialZone();
         var extractor = PlaceAndOperationalize(sim, StructureType.ForestExtractor);
 
         var treasuryBefore = sim.State.City.TreasuryBalance;
-        sim.Tick(15);  // through day 15 of month 1
+        sim.Tick(30);  // monthly settlement
 
-        // Treasury should have received residential rent + utilities + extractor utilities ($1,000 for forest extractor)
-        // We don't compute the exact amount; just verify the extractor's utility hit treasury.
-        Assert.True(sim.State.City.TreasuryBalance > treasuryBefore + 50 * 800,  // rent alone
-            "Treasury should have received industrial utility payment");
+        // Treasury collected residential rent + utilities + extractor utilities.
+        Assert.True(sim.State.City.TreasuryBalance > treasuryBefore + 50 * 800,
+            "Treasury should have received industrial utility payment on top of rent.");
     }
 
     [Fact]

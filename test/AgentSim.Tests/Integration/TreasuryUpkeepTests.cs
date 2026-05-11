@@ -33,14 +33,14 @@ public class TreasuryUpkeepTests
         var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 500_000 });
         var before = sim.State.City.TreasuryBalance;
 
-        sim.Tick(1);
+        sim.Tick(30);  // day-30 settlement fires
 
         Assert.Equal(before, sim.State.City.TreasuryBalance);
         Assert.Equal(1.0, sim.State.City.UpkeepFundingFraction);
     }
 
     [Fact]
-    public void Upkeep_OperationalStructures_DeductsExpectedAmountOnDay1()
+    public void Upkeep_OperationalStructures_DeductsExpectedAmountOnSettlement()
     {
         var sim = Sim.Create(new SimConfig
         {
@@ -55,7 +55,7 @@ public class TreasuryUpkeepTests
         FastBuildSchool(sim, StructureType.PrimarySchool);
 
         var before = sim.State.City.TreasuryBalance;
-        sim.Tick(1);
+        sim.Tick(30);  // monthly settlement
 
         Assert.Equal(before - 95_000, sim.State.City.TreasuryBalance);
         Assert.Equal(1.0, sim.State.City.UpkeepFundingFraction);
@@ -64,12 +64,25 @@ public class TreasuryUpkeepTests
     [Fact]
     public void Upkeep_UnderConstruction_PaysNothing()
     {
+        // Synthesize a hospital with explicit long construction time so it's still building
+        // when the monthly settlement fires.
         var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 1_000_000 });
-        sim.PlaceServiceStructure(StructureType.Hospital);  // under construction
+        var hospital = new Structure
+        {
+            Id = sim.State.AllocateStructureId(),
+            Type = StructureType.Hospital,
+            ZoneId = 0,
+            ResidentialCapacity = 0,
+            ConstructionTicks = 0,
+            RequiredConstructionTicks = 60,  // longer than the 30-day settlement window
+            ServiceCapacity = Services.HospitalCapacity,
+        };
+        sim.State.City.Structures[hospital.Id] = hospital;
         var before = sim.State.City.TreasuryBalance;
 
-        sim.Tick(1);
+        sim.Tick(30);  // monthly settlement fires; hospital still under construction
 
+        Assert.False(hospital.Operational);
         Assert.Equal(before, sim.State.City.TreasuryBalance);
     }
 
@@ -81,13 +94,13 @@ public class TreasuryUpkeepTests
         hospital.Inactive = true;
         var before = sim.State.City.TreasuryBalance;
 
-        sim.Tick(1);
+        sim.Tick(30);
 
         Assert.Equal(before, sim.State.City.TreasuryBalance);
     }
 
     [Fact]
-    public void Upkeep_FiresOnceAtStartOfEachMonth()
+    public void Upkeep_FiresOnceAtMonthlySettlement()
     {
         var sim = Sim.Create(new SimConfig
         {
@@ -98,7 +111,7 @@ public class TreasuryUpkeepTests
         FastBuildService(sim, StructureType.PoliceStation);  // $15k/mo (calibrated)
         var before = sim.State.City.TreasuryBalance;
 
-        sim.Tick(30);  // exactly one month — upkeep fires on day 1
+        sim.Tick(30);
 
         Assert.Equal(before - Upkeep.PoliceStation, sim.State.City.TreasuryBalance);
     }
@@ -116,7 +129,7 @@ public class TreasuryUpkeepTests
         });
         FastBuildService(sim, StructureType.Hospital);
 
-        sim.Tick(1);
+        sim.Tick(30);
 
         Assert.Equal(60_000 - 10_000, sim.State.City.TreasuryBalance);
         Assert.InRange(sim.State.City.UpkeepFundingFraction, 0.08, 0.09);
@@ -134,7 +147,7 @@ public class TreasuryUpkeepTests
         });
         FastBuildService(sim, StructureType.Hospital);  // $120k/month — far exceeds treasury
 
-        sim.Tick(1);
+        sim.Tick(30);
 
         Assert.True(sim.State.City.TreasuryBalance >= 0,
             $"Treasury should stay non-negative under partial-pay. Got {sim.State.City.TreasuryBalance}.");
@@ -182,7 +195,7 @@ public class TreasuryUpkeepTests
         FastBuildService(sim, StructureType.Clinic);    // $25k
         FastBuildService(sim, StructureType.Hospital);  // $120k
 
-        sim.Tick(1);  // day 1: partial-pay fires
+        sim.Tick(30);  // monthly settlement → partial-pay fires
 
         // Funding fraction should be < 1.0
         Assert.True(sim.State.City.UpkeepFundingFraction < 1.0);
@@ -221,7 +234,7 @@ public class TreasuryUpkeepTests
             };
         }
 
-        sim.Tick(1);  // day 1: partial-pay fires (upkeep $120k > treasury $60k)
+        sim.Tick(30);  // monthly settlement → partial-pay fires (upkeep $120k > treasury $60k)
 
         Assert.True(sim.State.City.UpkeepFundingFraction < 1.0);
         var snap = ServiceSatisfactionMechanic.Compute(sim.State);
@@ -389,10 +402,12 @@ public class TreasuryUpkeepTests
     }
 
     [Fact]
-    public void UpkeepOrder_FullPay_FiresBeforeRent_OnDay1()
+    public void MonthlySettlement_UpkeepAndRentBothFlow()
     {
-        // Treasury sized to cover upkeep fully so we can verify deduction math.
-        // 50 settlers × $800 rent = $40k. PoliceStation $15k upkeep.
+        // Under Option A, all settlements fire on day 30 in a fixed sequence:
+        // upkeep → agent rent → utilities → ... → wages. Net treasury after one month:
+        //   100k - 15k (police upkeep) + 50 × $800 (rent) + 50 × $200 (utilities) = $135k.
+        // No agents are employed (no commercial) so wages don't flow → no income tax.
         var sim = Sim.Create(new SimConfig
         {
             Seed = 42,
@@ -402,9 +417,9 @@ public class TreasuryUpkeepTests
         sim.CreateResidentialZone();
         FastBuildService(sim, StructureType.PoliceStation);
 
-        sim.Tick(1);  // day 1: upkeep -$15k, then rent +$40k → 100 - 15 + 40 = 125
+        sim.Tick(30);
 
-        Assert.Equal(125_000, sim.State.City.TreasuryBalance);
+        Assert.Equal(100_000 - 15_000 + 50 * 800 + 50 * 200, sim.State.City.TreasuryBalance);
         Assert.Equal(1.0, sim.State.City.UpkeepFundingFraction);
     }
 
@@ -473,7 +488,7 @@ public class TreasuryUpkeepTests
         sim.State.City.Structures[ah.Id] = ah;
 
         var before = sim.State.City.TreasuryBalance;
-        sim.Tick(1);
+        sim.Tick(30);
 
         Assert.Equal(before - Upkeep.AffordableHousing, sim.State.City.TreasuryBalance);
     }

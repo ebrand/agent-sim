@@ -19,53 +19,44 @@ public class MonthlySettlementTests
     }
 
     [Fact]
-    public void Day1_PaysRentToTreasury()
+    public void TickBeforeDay30_NoMoneyFlows()
     {
+        // Under the single-day settlement model, days 1-29 are economic no-ops.
+        // Treasury and agent savings should be unchanged until tick 30.
         var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 0 });
         sim.CreateResidentialZone();
+        var treasuryStart = sim.State.City.TreasuryBalance;
+        var agentSavingsStart = sim.State.City.Agents.Values.First().Savings;
 
-        sim.Tick(1);  // tick to day 1
+        sim.Tick(29);
 
-        // 50 settlers × $800 rent = $40,000
-        Assert.Equal(50 * 800, sim.State.City.TreasuryBalance);
+        Assert.Equal(treasuryStart, sim.State.City.TreasuryBalance);
+        Assert.Equal(agentSavingsStart, sim.State.City.Agents.Values.First().Savings);
     }
 
     [Fact]
-    public void Day1_DeductsRentFromAgentSavings()
+    public void Day30_RentAndUtilitiesFlowToTreasury()
+    {
+        // All flows happen on day 30 in a single settlement.
+        // 50 settlers × ($800 rent + $200 utilities) = $50,000.
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 0 });
+        sim.CreateResidentialZone();
+
+        sim.Tick(30);
+
+        Assert.Equal(50 * (800 + 200), sim.State.City.TreasuryBalance);
+    }
+
+    [Fact]
+    public void Day30_AgentPaysRentAndUtilities()
     {
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
 
-        sim.Tick(1);
+        sim.Tick(30);
 
+        // No commercial → no COL. Settler savings after one month = founders bonus - rent - utilities.
         var uneducated = sim.State.City.Agents.Values.First(a => a.EducationTier == EducationTier.Uneducated);
-        Assert.Equal(Bootstrap.FoundersStartingSavings - 800, uneducated.Savings);
-    }
-
-    [Fact]
-    public void Day15_PaysUtilitiesToTreasury()
-    {
-        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 0 });
-        sim.CreateResidentialZone();
-
-        sim.Tick(15);  // through day 15
-
-        // Day 1: rent $800 × 50 = $40,000
-        // Day 15: utilities $200 × 50 = $10,000
-        // Total: $50,000
-        Assert.Equal(50 * 800 + 50 * 200, sim.State.City.TreasuryBalance);
-    }
-
-    [Fact]
-    public void Day15_DeductsUtilitiesFromAgentSavings()
-    {
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-
-        sim.Tick(15);
-
-        var uneducated = sim.State.City.Agents.Values.First(a => a.EducationTier == EducationTier.Uneducated);
-        // Founders' bonus $5,000 minus $800 rent (day 1) minus $200 utilities (day 15) = $4,000
         Assert.Equal(Bootstrap.FoundersStartingSavings - 800 - 200, uneducated.Savings);
     }
 

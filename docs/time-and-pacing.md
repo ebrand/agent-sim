@@ -115,19 +115,22 @@ Within a single tick, events fire in a defined order. This is critical for save/
 3. **Continuous transactions settle:**
    - All goods sales for the day (extractor → processor → manufacturer → storage → commercial → agent)
    - Updates structure cash balances
-4. **Periodic settlement events** (only on relevant days):
-   - Day 1: treasury upkeep paid out, agent rent, wage installment 1 (with income tax)
-   - Day 8: licensing fees (service-only commercial → regional treasury)
-   - Day 15: utilities paid, wage installment 2 (with income tax)
-   - Day 22: sales tax
-   - Day 30: property tax, end-of-month profitability check (after settlements)
-5. **End-of-month emigration check** (last tick of month, after all settlements). Two passes, in this order:
-   - **Insolvency emigration**: every agent runs the wage+savings rule (see `economy.md`).
-   - **Worst-of service emigration**: every surviving agent rolls against the worst-of-service formula (see `feedback-loops.md`).
-6. **Notification firing and auto-pause checks.**
-7. **Autosave check.**
+4. **Monthly settlement** (day 30 only — all money flows happen here in a fixed sequence). Days 1, 8, 15, 22 are economic no-ops. The sequence:
+   1. **Treasury upkeep**: civic / healthcare / education / utility / affordable housing structures funded. Sets `UpkeepFundingFraction`. Partial-pay if treasury < total upkeep (pay treasury / 6 this month).
+   2. **Agent outflows**: rent + utilities → treasury.
+   3. **Structure outflows**: commercial / industrial utilities + property tax → treasury.
+   4. **COL spending**: agent → commercial, then commercial pays storage / region / imports for goods.
+   5. **Sales tax**: commercial → treasury (computed from this month's COL revenue).
+   6. **Wages**: employer → agent net of income tax (single full payment, no installment splitting). Income tax → treasury.
+   7. **Profitability check + monthly accumulator reset.**
+   8. **Insolvency emigration**: agents whose Savings went negative after all the above.
+   9. **Worst-of service emigration**: surviving agents roll against `(60 - worst_sat) / 100 × 0.02` (see `feedback-loops.md`).
+   10. **Births.**
+   11. **Bankruptcy clock + game-over check.**
+5. **Notification firing and auto-pause checks.**
+6. **Autosave check.**
 
-Within each step, sub-ordering follows the per-actor "outflows before inflows" rule.
+The old "outflows before inflows" sub-ordering rule is no longer load-bearing — the single-day settlement applies all flows in the fixed sequence above, which already deducts agent costs before crediting wages.
 
 ## RNG Seeding
 

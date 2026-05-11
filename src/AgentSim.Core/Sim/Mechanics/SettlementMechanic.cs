@@ -4,17 +4,26 @@ using AgentSim.Core.Types;
 namespace AgentSim.Core.Sim.Mechanics;
 
 /// <summary>
-/// Periodic settlement events. Per `time-and-pacing.md`:
-///   Day 1:  treasury upkeep paid out, agent rent, wage installment 1 (with income tax)
-///   Day 8:  licensing fees (service-only commercial → regional treasury)
-///   Day 15: utilities (residential / commercial / industrial → treasury), wage installment 2
-///   Day 22: sales tax (commercial → treasury)
-///   Day 30: property tax, end-of-month profitability check, COL flow, end-of-month emigration check
+/// Monthly settlement. Per the simplified-accounting model (Option A): every money flow happens
+/// on day 30. Days 1, 8, 15, 22 are no-op economically. This eliminates intra-month transient
+/// states, the "outflows-before-inflows" sub-ordering rule, and wage-installment splitting.
 ///
-/// Per-actor sub-ordering: outflows fire before inflows on a given day.
+/// Day 30 order:
+///   1. Treasury upkeep (sets UpkeepFundingFraction; treasury outflow)
+///   2. Agent rent + utilities (agent → treasury)
+///   3. Structure utilities + property tax (commercial / industrial → treasury)
+///   4. COL spending (agent → commercial → storage/region/imports); updates commercial revenue
+///   5. Sales tax (commercial → treasury; depends on revenue from step 4)
+///   6. Wages (employer → agent net of income tax; tax → treasury)
+///   7. Profitability check + monthly accumulator reset
+///   8. Insolvency emigration (agents whose Savings went negative net)
+///   9. Service-pressure emigration (worst-of services below threshold)
+///   10. Births
+///   11. Bankruptcy clock + game-over check
 ///
-/// M3 adds commercial-side flows: wage payment from commercial → agents (instead of placeholder
-/// $0 wages), commercial utilities, commercial property tax, commercial sales tax, monthly COL.
+/// Industrial chain (extractor → processor → manufacturer → storage) continues to flow daily —
+/// that's a goods/production cycle, not a settlement event, and its cash transfers are between
+/// industrial structures only (not agents or treasury).
 /// </summary>
 public static class SettlementMechanic
 {
@@ -28,80 +37,46 @@ public static class SettlementMechanic
 
     public static void RunDailySettlements(SimState state)
     {
-        var day = DayOfMonth(state.CurrentTick);
-        switch (day)
+        if (DayOfMonth(state.CurrentTick) == 30)
         {
-            case 1:  Day1(state); break;
-            case 8:  Day8(state); break;
-            case 15: Day15(state); break;
-            case 22: Day22(state); break;
-            case 30: Day30(state); break;
+            RunMonthlySettlement(state);
         }
     }
 
-    /// <summary>
-    /// Day 1: treasury upkeep (out), agent rent (in to treasury), wage installment 1 (employer → agent).
-    /// Per-actor sub-ordering: outflows fire first. Treasury upkeep is the treasury's monthly
-    /// outflow and fires before rent (the treasury's monthly inflow).
-    /// </summary>
-    public static void Day1(SimState state)
+    public static void RunMonthlySettlement(SimState state)
     {
-        // Treasury outflow: monthly upkeep for civic / healthcare / education / utility /
-        // affordable housing (M10). Overdraft allowed — treasury may go negative.
+        // 1. Treasury outflow: monthly upkeep for treasury-funded structures. Sets
+        //    UpkeepFundingFraction, which the satisfaction calc consumes in step 9.
         TreasuryUpkeepMechanic.PayMonthlyUpkeep(state);
 
-        // Agent outflow: rent (agent → treasury)
+        // 2. Agent outflows: rent + utilities → treasury.
         foreach (var agent in state.City.Agents.Values)
         {
             PayRent(state, agent);
-        }
-
-        // Agent inflow: wage installment 1 (employer pays half wage, income tax withheld)
-        foreach (var agent in state.City.Agents.Values)
-        {
-            PayWageInstallment(state, agent);
-        }
-    }
-
-    /// <summary>Day 8: service-only commercial pays licensing fees to regional treasury. M3: not yet implemented.</summary>
-    public static void Day8(SimState state) { /* M3: no-op; M4+ adds service-only commercial */ }
-
-    /// <summary>
-    /// Day 15: utilities (out from agent / commercial / industrial → treasury),
-    /// wage installment 2 (in to agent).
-    /// </summary>
-    public static void Day15(SimState state)
-    {
-        // Agent outflow: utilities
-        foreach (var agent in state.City.Agents.Values)
-        {
             PayAgentUtilities(state, agent);
         }
 
-        // Commercial / Industrial outflow: utilities (structure → treasury)
+        // 3. Structure outflows: utilities + property tax (commercial / industrial → treasury).
         foreach (var structure in state.City.Structures.Values)
         {
             if (!structure.Operational || structure.Inactive) continue;
             if (structure.Category == StructureCategory.Commercial)
             {
                 PayCommercialUtilities(state, structure);
+                PayPropertyTax(state, structure);
             }
             else if (Industrial.IsIndustrial(structure.Type))
             {
                 PayIndustrialUtilities(state, structure);
+                PayPropertyTax(state, structure);
             }
         }
 
-        // Agent inflow: wage installment 2
-        foreach (var agent in state.City.Agents.Values)
-        {
-            PayWageInstallment(state, agent);
-        }
-    }
+        // 4. COL: agents pay commercial (agent outflow, commercial inflow). Commercial then pays
+        //    storage/region/imports for the goods backing this consumption. Updates MonthlyRevenue.
+        CostOfLivingMechanic.RunMonthlyCol(state);
 
-    /// <summary>Day 22: commercial sales tax → treasury.</summary>
-    public static void Day22(SimState state)
-    {
+        // 5. Sales tax (commercial → treasury). Uses MonthlyRevenue accumulated in step 4.
         foreach (var structure in state.City.Structures.Values)
         {
             if (structure.Category == StructureCategory.Commercial && structure.Operational && !structure.Inactive)
@@ -109,53 +84,32 @@ public static class SettlementMechanic
                 PaySalesTax(state, structure);
             }
         }
-    }
 
-    /// <summary>
-    /// Day 30: COL revenue flows from agents to commercial; property tax (commercial / industrial → treasury);
-    /// end-of-month profitability check; end-of-month emigration check.
-    /// </summary>
-    public static void Day30(SimState state)
-    {
-        // COL: agents pay commercial (monthly, lumped). Per the per-actor rule, agent COL outflow is "out"
-        // from the agent and "in" to commercial — fires after agent outflows are conceptually settled.
-        CostOfLivingMechanic.RunMonthlyCol(state);
-
-        // Property tax (commercial / industrial → treasury)
-        foreach (var structure in state.City.Structures.Values)
+        // 6. Wages: employer → agent (net of income tax); income tax → treasury. Single full
+        //    payment (no more installment splitting).
+        foreach (var agent in state.City.Agents.Values)
         {
-            if (structure.Operational && !structure.Inactive &&
-                (structure.Category == StructureCategory.Commercial
-                 || structure.Category == StructureCategory.IndustrialExtractor
-                 || structure.Category == StructureCategory.IndustrialProcessor
-                 || structure.Category == StructureCategory.IndustrialManufacturer
-                 || structure.Category == StructureCategory.IndustrialStorage))
-            {
-                PayPropertyTax(state, structure);
-            }
+            PayFullWage(state, agent);
         }
 
-        // End-of-month profitability check — fires after all settlements (so this month's
-        // revenue and expenses are fully populated) but before the monthly reset.
+        // 7. End-of-month profitability check (uses fully-populated MonthlyRevenue / MonthlyExpenses).
         StructureProfitabilityMechanic.EndOfMonthCheck(state);
 
-        // Reset monthly accumulators for the next month.
+        // Reset monthly accumulators for next month.
         foreach (var structure in state.City.Structures.Values)
         {
             structure.MonthlyRevenue = 0;
             structure.MonthlyExpenses = 0;
         }
 
-        // End-of-month emigration check (agents whose savings went negative this month)
+        // 8-9. Emigration checks (insolvency then service-pressure).
         EmigrationMechanic.EndOfMonthCheck(state);
-
-        // End-of-month service-pressure emigration (worst-of services below threshold)
         ServiceEmigrationMechanic.EndOfMonthCheck(state);
 
-        // Monthly births (after emigration so this month's emigrants don't count toward birth rate)
+        // 10. Monthly births (after emigration so this month's emigrants don't count toward birth rate).
         BirthMechanic.RunMonthlyBirths(state);
 
-        // End-of-month bankruptcy check (M10): 6 consecutive months of negative treasury → game over.
+        // 11. Bankruptcy clock + game-over check (uses UpkeepFundingFraction from step 1).
         TreasuryUpkeepMechanic.RunEndOfMonthBankruptcyCheck(state);
     }
 
@@ -199,20 +153,23 @@ public static class SettlementMechanic
         state.City.TreasuryBalance += utility;
     }
 
-    private static void PayWageInstallment(SimState state, Agent agent)
+    /// <summary>
+    /// Pay the agent's full monthly wage in a single transaction. Income tax withheld at source
+    /// and forwarded to the treasury.
+    /// </summary>
+    private static void PayFullWage(SimState state, Agent agent)
     {
         if (agent.CurrentWage <= 0) return;
         if (agent.EmployerStructureId is null) return;
         if (!state.City.Structures.TryGetValue(agent.EmployerStructureId.Value, out var employer)) return;
 
-        // Wage paid in two equal installments per month. Income tax withheld.
-        var installment = agent.CurrentWage / 2;
-        var tax = (int)(installment * TaxRates.IncomeTax);
-        var net = installment - tax;
+        var gross = agent.CurrentWage;
+        var tax = (int)(gross * TaxRates.IncomeTax);
+        var net = gross - tax;
 
         // Outflow from employer's cash balance
-        employer.CashBalance -= installment;
-        employer.MonthlyExpenses += installment;
+        employer.CashBalance -= gross;
+        employer.MonthlyExpenses += gross;
 
         // Inflow to agent (net) + treasury (tax)
         agent.Savings += net;

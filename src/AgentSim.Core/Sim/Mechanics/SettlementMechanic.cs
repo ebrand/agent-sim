@@ -41,10 +41,15 @@ public static class SettlementMechanic
 
     /// <summary>
     /// Day 1: treasury upkeep (out), agent rent (in to treasury), wage installment 1 (employer → agent).
-    /// Per-actor sub-ordering: outflows fire first.
+    /// Per-actor sub-ordering: outflows fire first. Treasury upkeep is the treasury's monthly
+    /// outflow and fires before rent (the treasury's monthly inflow).
     /// </summary>
     public static void Day1(SimState state)
     {
+        // Treasury outflow: monthly upkeep for civic / healthcare / education / utility /
+        // affordable housing (M10). Overdraft allowed — treasury may go negative.
+        TreasuryUpkeepMechanic.PayMonthlyUpkeep(state);
+
         // Agent outflow: rent (agent → treasury)
         foreach (var agent in state.City.Agents.Values)
         {
@@ -56,9 +61,6 @@ public static class SettlementMechanic
         {
             PayWageInstallment(state, agent);
         }
-
-        // Treasury outflows for treasury-funded structures (civic / healthcare / education / utility / affordable housing).
-        // M3: no such structures exist — no-op.
     }
 
     /// <summary>Day 8: service-only commercial pays licensing fees to regional treasury. M3: not yet implemented.</summary>
@@ -152,6 +154,9 @@ public static class SettlementMechanic
 
         // Monthly births (after emigration so this month's emigrants don't count toward birth rate)
         BirthMechanic.RunMonthlyBirths(state);
+
+        // End-of-month bankruptcy check (M10): 6 consecutive months of negative treasury → game over.
+        TreasuryUpkeepMechanic.RunEndOfMonthBankruptcyCheck(state);
     }
 
     // === Per-event implementations ===

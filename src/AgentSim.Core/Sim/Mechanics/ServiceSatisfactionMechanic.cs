@@ -26,6 +26,10 @@ public static class ServiceSatisfactionMechanic
     {
         var city = state.City;
 
+        // M10: treasury-funded services (civic / healthcare / education / utility) contribute
+        // zero capacity when the treasury is negative — upkeep failures collapse satisfaction.
+        var bankrupt = city.TreasuryBalance < 0;
+
         // Civic / healthcare demand = total city population. Per `structures.md`,
         // capacities serve "agents" without further qualification.
         var totalAgents = city.Agents.Count;
@@ -50,11 +54,13 @@ public static class ServiceSatisfactionMechanic
             a.AgeDays >= Demographics.SecondaryAgeEndDay && a.AgeDays < Demographics.CollegeAgeEndDay);
 
         // Capacity = sum over operational, non-inactive structures of the relevant capacity field.
-        int CapacityOfCategory(StructureCategory cat) => city.Structures.Values
+        // When bankrupt, treasury-funded categories contribute zero (their upkeep was unpaid this
+        // month or the treasury has been overdrawn).
+        int CapacityOfCategory(StructureCategory cat) => bankrupt ? 0 : city.Structures.Values
             .Where(s => s.Category == cat && s.Operational && !s.Inactive)
             .Sum(s => s.ServiceCapacity);
 
-        int SchoolCapacity(StructureType type) => city.Structures.Values
+        int SchoolCapacity(StructureType type) => bankrupt ? 0 : city.Structures.Values
             .Where(s => s.Type == type && s.Operational && !s.Inactive)
             .Sum(s => s.SeatCapacity);
 

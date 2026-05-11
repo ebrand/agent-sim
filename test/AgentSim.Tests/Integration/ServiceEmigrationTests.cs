@@ -156,7 +156,14 @@ public class ServiceEmigrationTests
     [Fact]
     public void NoEmigration_WhenWorstPoolAboveThreshold()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
+        // Treasury sized to cover 6 months of upkeep (~$230k/mo × 6 = $1.38M) plus headroom.
+        // Otherwise M10 bankruptcy kicks in, services collapse, and emigration spikes.
+        var sim = Sim.Create(new SimConfig
+        {
+            Seed = 42,
+            InitialReservoirSize = 60_000,
+            StartingTreasury = 2_000_000,
+        });
         sim.CreateResidentialZone();
         FullyServeBootstrappedCity(sim);
         // Cushion savings so insolvency emigration never fires — isolate to service-pool behavior.

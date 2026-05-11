@@ -16,4 +16,12 @@ public sealed class City
 
     /// <summary>Fractional births accumulator. When this exceeds 1.0, integer babies are born and the accumulator decreases.</summary>
     public double BirthFractionalAccumulator { get; set; }
+
+    /// <summary>Number of consecutive end-of-months the treasury has been negative. Resets to 0
+    /// when the treasury is non-negative at end-of-month. 6 → game-over per `feedback-loops.md`.</summary>
+    public int ConsecutiveMonthsBankrupt { get; set; }
+
+    /// <summary>Set true when the treasury has been negative for 6 consecutive end-of-months.
+    /// Sim continues to tick — UI / player code consumes this flag.</summary>
+    public bool GameOver { get; set; }
 }

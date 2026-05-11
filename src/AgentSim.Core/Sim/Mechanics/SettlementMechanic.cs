@@ -6,7 +6,7 @@ namespace AgentSim.Core.Sim.Mechanics;
 /// <summary>
 /// Periodic settlement events. Per `time-and-pacing.md`:
 ///   Day 1:  treasury upkeep paid out, agent rent, wage installment 1 (with income tax)
-///   Day 8:  licensing fees (service-only commercial → Region.Treasury)
+///   Day 8:  licensing fees (service-only commercial → regional treasury)
 ///   Day 15: utilities (residential / commercial / industrial → treasury), wage installment 2
 ///   Day 22: sales tax (commercial → treasury)
 ///   Day 30: property tax, end-of-month profitability check, COL flow, end-of-month emigration check
@@ -61,7 +61,7 @@ public static class SettlementMechanic
         // M3: no such structures exist — no-op.
     }
 
-    /// <summary>Day 8: service-only commercial pays licensing fees to Region.Treasury. M3: not yet implemented.</summary>
+    /// <summary>Day 8: service-only commercial pays licensing fees to regional treasury. M3: not yet implemented.</summary>
     public static void Day8(SimState state) { /* M3: no-op; M4+ adds service-only commercial */ }
 
     /// <summary>

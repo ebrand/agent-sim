@@ -115,7 +115,7 @@ No friction, delay, or cost on any of these flows in the alpha. Friction (transp
 
 Each industrial transaction along the chain transfers money: extractor → processor pays for raw materials, processor → manufacturer pays for processed goods, storage → commercial pays for finished manufactured goods. See `economy.md` and `supply-chain.md` for the full price grid.
 
-When local industrial storage overflows into the regional goods reservoir, the **Region.Treasury** purchases that overflow at the manufactured-goods sale price. When local commercial later draws from the regional goods reservoir, the commercial structure pays the Region.Treasury at the same price. Region.Treasury is **functionally infinite** — it never runs out of money to buy overflow, and the cash inflow from commercial purchases is not bookkept. See `economy.md` and `region.md`.
+When local industrial storage overflows into the regional goods reservoir, the **regional treasury** purchases that overflow at the manufactured-goods sale price. When local commercial later draws from the regional goods reservoir, the commercial structure pays the regional treasury at the same price. regional treasury is **functionally infinite** — it never runs out of money to buy overflow, and the cash inflow from commercial purchases is not bookkept. See `economy.md` and `region.md`.
 
 ### Construction draws on goods
 

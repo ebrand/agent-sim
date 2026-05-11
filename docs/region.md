@@ -74,13 +74,13 @@ The reservoir starts with a non-zero **bootstrap stock** sufficient to construct
 
 Calibrated against N = 50 settlers and a house recipe of 10 lumber + 5 concrete + 2 glass per house. Metal is intentionally excluded from bootstrap — see `goods-and-recipes.md`.
 
-### Region.Treasury
+### regional treasury
 
 A separate, regional-level treasury distinct from the city treasury. **Functionally infinite** — no balance is tracked. See `economy.md` for details.
 
 - Inflows: licensing fees from service-only commercial; payments from local commercial buying from the regional goods reservoir. (Sink — not tracked.)
 - Outflows: purchases of overflow from local industrial storage at full manufactured-goods price; other regional functions TBD. (Source — not tracked.)
-- Money does not flow between Region.Treasury and the city treasury.
+- Money does not flow between regional treasury and the city treasury.
 
 The infinite-balance simplification means local industry can always sell its overflow to the regional layer at full price, and local commercial can always buy from the regional reservoir, without the regional layer becoming a constraint or finite resource the player tracks.
 

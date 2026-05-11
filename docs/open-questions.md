@@ -55,7 +55,7 @@ All Tier 2 default values landed:
 - **Climate / nature degradation per industrial structure:** spec'd in `structures.md`.
 - **Climate / nature floor:** 0.05.
 - **Restoration recovery rates:** spec'd in `structures.md`.
-- **Region.Treasury overflow cap:** 50,000 units per resource per month.
+- **regional treasury overflow cap:** 50,000 units per resource per month.
 - **Default game speed:** 1 tick / second (1×).
 - **Affordable housing capacity:** 40 agents per structure.
 - **Construction money cost** (treasury-funded structures): $10k civic, $20k–$50k healthcare/education/utility/affordable housing.
@@ -166,8 +166,8 @@ Resolved as a cost-of-living component: agents purchase food from commercial str
 - **Wage-cut mechanism** — one worker at a time, lowest-paid tier first (uneducated → primary → secondary → college). Higher-tier workers can do lower-tier work.
 - **Wageless duration before quitting** — 3 months at zero wage, then the worker quits.
 - **Fired-for-cause rate** — 0.05% per month per agent.
-- **Licensing fee destination** — Region.Treasury (new entity), not city treasury.
-- **Region.Treasury** — new top-level object alongside city treasury. Receives licensing fees from service-only commercial and revenue from regional goods sold to local commercial.
+- **Licensing fee destination** — regional treasury (new entity), not city treasury.
+- **regional treasury** — new top-level object alongside city treasury. Receives licensing fees from service-only commercial and revenue from regional goods sold to local commercial.
 - **Affordable housing** — new residential sub-type for homelessness mitigation. Treasury-subsidized low rent, negative LV impact on neighbors.
 - **Homeless shelter** — new civic sub-type. Treasury upkeep. Holds homeless in seats, reduces attractiveness penalty, does not extend the 2-month emigration timer.
 
@@ -187,7 +187,7 @@ Resolved as a cost-of-living component: agents purchase food from commercial str
 - **Affordable housing rent** — $500/month, treasury-subsidized.
 - **Wage cut order** — highest-paid first (profit-maximizing, since production drops linearly per cut regardless of tier).
 - **Production tied to jobs filled** — output scales linearly. Daily accumulation per tick.
-- **Region.Treasury is functionally infinite for accounting** — no balance tracked. Per-resource cap on overflow purchases (TBD value) prevents runaway local production.
+- **regional treasury is functionally infinite for accounting** — no balance tracked. Per-resource cap on overflow purchases (TBD value) prevents runaway local production.
 - **Wageless queue + re-hire** — within the 3-month window, automatic re-instatement on profitability recovery. After 3 months, agent quits and emigrates back to regional reservoir.
 - **Emigrants retain savings.** Agent records return to the regional reservoir (well of souls).
 
@@ -218,7 +218,7 @@ The following are still in:
 
 - **Affordable housing capacity per structure.** Rent and eligibility spec'd; capacity TBD (currently noted as ~30 agents in the recipe table, comparable to apartments).
 - **Affordable housing LV penalty** — magnitude / radius. Mechanically inert until spatial layer.
-- **Region.Treasury overflow purchase cap (per resource).** TBD value.
+- **regional treasury overflow purchase cap (per resource).** TBD value.
 - **"Non-profitable" definition** — single-month, sustained K months, margin threshold? TBD.
 - **Default game speed** — likely 1 tick/sec, but TBD.
 - **Notification triggers and auto-pause defaults** — which events get notifications, which auto-pause, and which can be disabled by player. Should at minimum include "structure went inactive" event.

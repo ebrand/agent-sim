@@ -15,7 +15,7 @@ There are **two treasury entities**:
 - **Bankruptcy:** if the city treasury hits zero, treasury-funded upkeep stops. Affected services fall to zero effective service, feeding worst-of emigration.
 - **Game over:** if the city treasury remains in a **negative balance for 6 consecutive months**, the game ends.
 
-### Region.Treasury (NEW — functionally infinite)
+### regional treasury (NEW — functionally infinite)
 
 A separate, regional-level treasury — the financial counterpart to the regional goods reservoir.
 
@@ -27,7 +27,7 @@ A separate, regional-level treasury — the financial counterpart to the regiona
 - **Outflows (source, not tracked):**
   - Purchases of overflow from local industrial storage (paid at full manufactured-goods price).
   - Other future regional uses, when designed.
-- The Region.Treasury is **separate from the city treasury** — money does not flow between them.
+- The regional treasury is **separate from the city treasury** — money does not flow between them.
 
 **Cap on regional purchases: 50,000 units per resource per month** (default). Once the cap is hit for a given resource, further overflow has nowhere to go and the local industrial chain back-pressures (manufacturer fills internal buffer → processor fills → extractor fills → chain stalls).
 
@@ -234,7 +234,7 @@ Default wages (per agent per month). **Single fixed value per tier — no per-ag
 Per `time-and-pacing.md`, settlement events are spread across 5 days of the month:
 
 - **Day 1:** treasury upkeep paid out, agent rent, wage installment 1 (with income tax). Sub-order: outflows before inflows (so treasury upkeep paid before rent collected; agent rent paid before wage received).
-- **Day 8:** licensing fees (service-only commercial → Region.Treasury).
+- **Day 8:** licensing fees (service-only commercial → regional treasury).
 - **Day 15:** utilities (agent / commercial / industrial → city treasury), wage installment 2 (with income tax). Same outflows-before-inflows sub-order.
 - **Day 22:** sales tax (commercial → city treasury).
 - **Day 30:** property tax (commercial / industrial → city treasury), end-of-month profitability check (after all settlements complete).

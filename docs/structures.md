@@ -132,7 +132,7 @@ For alpha-1, commercial structures share a single **commercial demand pool**. Vi
 
 - Do **not** consume goods from industrial storage / regional reservoir / imports.
 - Generate commercial revenue purely from agent spending (the agent's entertainment / service portion of COL).
-- Pay **licensing fees** (ASCAP, franchise costs, marketing, etc.) to the **Region.Treasury** — a recurring monthly cost equivalent in magnitude to what a goods-backed structure would spend on input goods. This balances the absence of real input costs and routes the money out of the city economy into the regional treasury (see `economy.md`).
+- Pay **licensing fees** (ASCAP, franchise costs, marketing, etc.) to the **regional treasury** — a recurring monthly cost equivalent in magnitude to what a goods-backed structure would spend on input goods. This balances the absence of real input costs and routes the money out of the city economy into the regional treasury (see `economy.md`).
 - Otherwise behave like normal commercial structures (jobs, taxes, utilities, etc.).
 
 Goods-backed sub-types (shopping, retail) consume manufactured goods from the standard goods routing chain. The agent's food / clothing / household COL flows through goods-backed structures.

@@ -135,7 +135,7 @@ public class CommercialGoodsConsumptionTests
     public void Storage_RevenueIncreases_FromCommercialSales()
     {
         // Storage should track MonthlyRevenue from commercial sales (in addition to existing
-        // sale-to-Region.Treasury flow).
+        // sale-to-regional treasury flow).
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var commZone = sim.CreateCommercialZone();
@@ -145,7 +145,7 @@ public class CommercialGoodsConsumptionTests
         sim.Tick(15);  // mid-month, before settlement reset
 
         // Storage should have positive MonthlyRevenue from commercial sales
-        // (Note: storage also sells to Region.Treasury on excess; we just verify commercial revenue exists)
+        // (Note: storage also sells to regional treasury on excess; we just verify commercial revenue exists)
         Assert.True(storage.MonthlyRevenue > 0, "Storage should have received revenue from commercial purchases");
     }
 

@@ -11,7 +11,7 @@ The full set of tunable parameters in alpha-1. Each lever has a default value de
   - (Residential and treasury-funded structures are exempt)
 - **Sales tax rate** (% of commercial revenue per month) — default 3%
 - **Import upcharge** (% over local price) — default 25%
-- **Region.Treasury overflow purchase cap** (units per resource per month) — default 50,000
+- **regional treasury overflow purchase cap** (units per resource per month) — default 50,000
 
 ## Wages (per structure-category × education tier)
 

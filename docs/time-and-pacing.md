@@ -17,7 +17,7 @@ Settlement events are spread across **five days of the month** so no single day 
 | 1 | Treasury upkeep paid out | Treasury → civic / healthcare / education / utility / affordable-housing subsidy |
 | 1 | Agent rent | Agent → city treasury |
 | 1 | Wage installment 1 (with income tax withheld) | Employer → agent (income tax → city treasury) |
-| 8 | Licensing fees | Service-only commercial → Region.Treasury |
+| 8 | Licensing fees | Service-only commercial → regional treasury |
 | 15 | Utilities | Agent / commercial / industrial → city treasury |
 | 15 | Wage installment 2 (with income tax withheld) | Employer → agent (income tax → city treasury) |
 | 22 | Sales tax | Commercial → city treasury |
@@ -95,7 +95,7 @@ Long sessions are expected (a 60-year city evolution at 1× = ~6 hours real-time
 - Region: climate, nature, natural resources distribution, regional agent reservoir per education tier, regional goods reservoir per resource
 - City: zones (geometry), structures (id, type, position, construction progress, internal storage levels, employee roster, cash balance, profitability state and warning flag)
 - Agents: id, age in days, education tier, employer (structure id or null), residence (structure id), current wage, savings, in-affordable-housing flag, attempt-used flag, wageless flag
-- Treasury: city treasury balance (Region.Treasury is functionally infinite; no balance to save)
+- Treasury: city treasury balance (regional treasury is functionally infinite; no balance to save)
 - Demand pools: per-pool current values, backlog counters, saturation timers
 - Active and dismissed notifications
 
@@ -117,7 +117,7 @@ Within a single tick, events fire in a defined order. This is critical for save/
    - Updates structure cash balances
 4. **Periodic settlement events** (only on relevant days):
    - Day 1: treasury upkeep paid out, agent rent, wage installment 1 (with income tax)
-   - Day 8: licensing fees (service-only commercial → Region.Treasury)
+   - Day 8: licensing fees (service-only commercial → regional treasury)
    - Day 15: utilities paid, wage installment 2 (with income tax)
    - Day 22: sales tax
    - Day 30: property tax, end-of-month profitability check (after settlements)

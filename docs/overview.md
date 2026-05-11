@@ -46,7 +46,7 @@ The simulation is bounded in scale (60k regional agent cap, no reservoir refill)
 - Multi-region trade and world structure.
 
 **Explicitly out of scope:**
-- **Multi-city per region.** Alpha-1 is one city per region. The "regional" entities (regional reservoir, Region.Treasury, regional goods reservoir) abstract the off-region world rather than representing other player-managed cities.
+- **Multi-city per region.** Alpha-1 is one city per region. The "regional" entities (regional reservoir, regional treasury, regional goods reservoir) abstract the off-region world rather than representing other player-managed cities.
 
 ## Starting a New Game
 

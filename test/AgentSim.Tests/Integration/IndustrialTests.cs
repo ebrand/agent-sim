@@ -116,7 +116,7 @@ public class IndustrialTests
         // (single-manufacturer storage is unprofitable; without this constraint it would go inactive after 2 months)
         sim.Tick(20);
 
-        // Verify the flow: manufacturer produces, storage absorbs, storage sells to Region.Treasury
+        // Verify the flow: manufacturer produces, storage absorbs, storage sells to regional treasury
         var regionHousehold = sim.State.Region.GoodsReservoir.GetValueOrDefault(ManufacturedGood.Household);
         Assert.True(regionHousehold > 0,
             $"Region should have received household goods from storage sales. Got {regionHousehold}.");
@@ -170,7 +170,7 @@ public class IndustrialTests
         // = 60 household/month × $40 × 0.20 margin = $480/mo, less than $1,400 monthly cost.
         //
         // This test verifies the MARGIN MECHANIC is wired correctly: storage paid 80% of price
-        // to manufacturer (an expense) and received 100% from Region.Treasury (a revenue).
+        // to manufacturer (an expense) and received 100% from regional treasury (a revenue).
         // The net cashflow is negative at this scale — that's expected, not a bug.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
@@ -183,7 +183,7 @@ public class IndustrialTests
 
         // Both money flows should have happened: storage paid manufacturer (expense) AND received from region (revenue)
         Assert.True(storage.MonthlyExpenses > 0, "Storage should have paid manufacturer for goods");
-        Assert.True(storage.MonthlyRevenue > 0, "Storage should have received money from Region.Treasury");
+        Assert.True(storage.MonthlyRevenue > 0, "Storage should have received money from regional treasury");
         // Manufacturer should have received money for goods
         Assert.True(manufacturer.MonthlyRevenue > 0, "Manufacturer should have been paid by storage");
     }

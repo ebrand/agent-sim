@@ -110,7 +110,7 @@ public static class CostOfLivingMechanic
             unitsRemaining -= pull;
         }
 
-        // 2. Try regional reservoir (Region.Treasury is functionally infinite — no balance tracked)
+        // 2. Try regional reservoir (regional treasury is functionally infinite — no balance tracked)
         if (unitsRemaining > 0)
         {
             var regionAvailable = state.Region.GoodsReservoir.GetValueOrDefault(good);
@@ -119,7 +119,7 @@ public static class CostOfLivingMechanic
             {
                 var cost = pull * unitPrice;
                 state.Region.GoodsReservoir[good] = regionAvailable - pull;
-                // Money to Region.Treasury (no balance tracked)
+                // Money to regional treasury (no balance tracked)
                 actualCost += cost;
                 unitsRemaining -= pull;
             }

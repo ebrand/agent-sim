@@ -18,7 +18,7 @@ namespace AgentSim.Core.Sim.Mechanics;
 ///   - Processor pays extractor at raw material price
 ///   - Manufacturer pays processor at processed good price
 ///   - Storage pays manufacturer at 80% of manufactured good price (20% storage margin)
-///   - Storage sells overflow to Region.Treasury at full manufactured price (Region.Treasury is functionally infinite)
+///   - Storage sells overflow to regional treasury at full manufactured price (regional treasury is functionally infinite)
 /// </summary>
 public static class IndustrialProductionMechanic
 {
@@ -164,7 +164,7 @@ public static class IndustrialProductionMechanic
         }
     }
 
-    // === Storage sells overflow to Region.Treasury at full price ===
+    // === Storage sells overflow to regional treasury at full price ===
     private static void StorageSellOverflowToRegion(SimState state)
     {
         foreach (var storage in state.City.Structures.Values)
@@ -178,7 +178,7 @@ public static class IndustrialProductionMechanic
                 var qty = storage.ManufacturedStorage[good];
                 if (qty <= 0) continue;
 
-                // For M4: storage immediately sells all goods to Region.Treasury (infinite buyer).
+                // For M4: storage immediately sells all goods to regional treasury (infinite buyer).
                 // M5+ will route to commercial demand first, then overflow to region.
                 var unitPrice = Industrial.ManufacturedGoodPrice(good);
                 var sellPrice = unitPrice * qty;
@@ -186,7 +186,7 @@ public static class IndustrialProductionMechanic
                 storage.CashBalance += sellPrice;
                 storage.MonthlyRevenue += sellPrice;
                 storage.ManufacturedStorage[good] = 0;
-                // Region.Treasury is functionally infinite — money disappears into the regional layer.
+                // regional treasury is functionally infinite — money disappears into the regional layer.
                 state.Region.GoodsReservoir.TryGetValue(good, out var existing);
                 state.Region.GoodsReservoir[good] = existing + qty;  // track regional accumulation
             }

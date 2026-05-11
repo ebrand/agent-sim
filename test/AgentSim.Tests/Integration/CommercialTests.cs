@@ -200,25 +200,21 @@ public class CommercialTests
     }
 
     [Fact]
-    public void CommercialStructure_PaysUtilitiesOnDay15()
+    public void CommercialStructure_PaysUtilitiesMonthly()
     {
-        // Shop should pay $2k utilities on day 15; verify treasury receives them.
-        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 0 });
+        // Shop has $2k utilities; verify treasury receives them at the monthly settlement.
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 100_000 });
         sim.CreateResidentialZone();
         var commZone = sim.CreateCommercialZone();
         var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
 
-        sim.Tick(shop.RequiredConstructionTicks);  // construction completes at tick 7
-
-        // Walk to tick 14 (just before day 15 of month 1 — current month's day-15 already passed
-        // on tick 15 before shop was operational). Need shop operational across a day-15 boundary.
-        // Tick to day 15 of next month = tick 45.
-        var snapshotTick = sim.State.CurrentTick;
+        sim.Tick(shop.RequiredConstructionTicks);  // construction completes; shop is operational
         var snapshotTreasury = sim.State.City.TreasuryBalance;
 
-        sim.Tick(45 - snapshotTick);  // tick to day 15 of month 2
+        sim.Tick(30);  // monthly settlement fires
 
-        // Treasury accumulated rent on day 31 (~$40k) + agent utils on day 45 (~$10k) + shop utils ($2k).
+        // Treasury collected: rent (~$40k) + agent utilities (~$10k) + shop utilities ($2k)
+        // + sales tax + property tax. Just verify it grew meaningfully.
         Assert.True(sim.State.City.TreasuryBalance > snapshotTreasury,
             $"Treasury should grow with rent + utilities. Snapshot {snapshotTreasury} → now {sim.State.City.TreasuryBalance}.");
     }

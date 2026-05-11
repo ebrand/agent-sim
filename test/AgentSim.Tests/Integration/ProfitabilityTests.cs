@@ -93,7 +93,8 @@ public class ProfitabilityTests
     [Fact]
     public void InactiveStructure_DoesNotPayUtilitiesOrPropertyTax()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 0 });
+        // Industrial construction: extractor $150k + sawmill $250k + factory $400k + storage $150k = $950k.
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 1_000_000 });
         sim.CreateResidentialZone();
         PlaceFullyStaffed(sim, StructureType.ForestExtractor);
         PlaceFullyStaffed(sim, StructureType.Sawmill);

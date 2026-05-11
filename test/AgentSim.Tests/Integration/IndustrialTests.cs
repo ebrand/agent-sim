@@ -131,7 +131,8 @@ public class IndustrialTests
     public void IndustrialStructure_PaysUtilitiesMonthly()
     {
         // Under Option A, all flows happen on day 30. Verify industrial utilities flow to treasury.
-        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 0 });
+        // ForestExtractor construction = $150k.
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 200_000 });
         sim.CreateResidentialZone();
         var extractor = PlaceAndOperationalize(sim, StructureType.ForestExtractor);
 

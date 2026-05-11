@@ -48,7 +48,9 @@ public class ServiceEmigrationTests
     [Fact]
     public void PlaceServiceStructure_SetsCapacityFromDefaults()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        // Sum of construction costs for all 7 service types: $150 + $150 + $900 + $250 + $1200 +
+        // $300 + $200 = $3.15M. Treasury must cover that.
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 4_000_000 });
         Assert.Equal(5_000, sim.PlaceServiceStructure(StructureType.PoliceStation).ServiceCapacity);
         Assert.Equal(5_000, sim.PlaceServiceStructure(StructureType.FireStation).ServiceCapacity);
         Assert.Equal(25_000, sim.PlaceServiceStructure(StructureType.TownHall).ServiceCapacity);

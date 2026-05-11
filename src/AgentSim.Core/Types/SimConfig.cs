@@ -10,7 +10,13 @@ public sealed record SimConfig
     public double Climate { get; init; } = 0.7;
     public double Nature { get; init; } = 0.7;
 
-    public int StartingTreasury { get; init; } = 500_000;
+    /// <summary>
+    /// Starting city treasury. Sized for the alpha-1 calibration target: a modest founding city
+    /// (1 each of police / clinic / primary school / generator / well) costs ~$1.15M to construct
+    /// (M11: 10× monthly upkeep per structure) and runs at a ~$65k/month deficit while pre-commercial,
+    /// so $1.8M leaves ~6 months of full-pay operation post-construction.
+    /// </summary>
+    public int StartingTreasury { get; init; } = 1_800_000;
 
     /// <summary>
     /// Initial size of the regional agent reservoir. Lower than the total agent cap (60,000)

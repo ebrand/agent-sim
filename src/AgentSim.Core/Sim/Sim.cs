@@ -104,6 +104,8 @@ public sealed class Sim
         if (!Industrial.IsIndustrial(type))
             throw new ArgumentException($"{type} is not an industrial structure type", nameof(type));
 
+        ChargeConstructionCost(type);
+
         var capacity = Industrial.IsStorage(type)
             ? Industrial.FinalStorageCapacity
             : Industrial.InternalStorageCapacity;
@@ -124,6 +126,23 @@ public sealed class Sim
     }
 
     /// <summary>
+    /// Charge the city treasury for the construction cost of a structure type. Throws if the
+    /// treasury can't cover it — placement is rejected (no overdraft for new builds). Per M11
+    /// design discussion.
+    /// </summary>
+    private void ChargeConstructionCost(StructureType type)
+    {
+        var cost = Defaults.Construction.Cost(type);
+        if (cost <= 0) return;
+        if (State.City.TreasuryBalance < cost)
+        {
+            throw new InvalidOperationException(
+                $"Insufficient treasury to construct {type}: cost {cost}, available {State.City.TreasuryBalance}");
+        }
+        State.City.TreasuryBalance -= cost;
+    }
+
+    /// <summary>
     /// Manually place an education structure (primary school / secondary school / college).
     /// Education structures sit outside zones and start a 90-tick construction. Once operational,
     /// they offer seats for school-aged agents to enroll.
@@ -136,6 +155,8 @@ public sealed class Sim
         {
             throw new ArgumentException($"{type} is not an education structure type", nameof(type));
         }
+
+        ChargeConstructionCost(type);
 
         var structure = new Structure
         {
@@ -166,6 +187,8 @@ public sealed class Sim
             throw new ArgumentException($"{type} is not a civic/healthcare/utility structure type", nameof(type));
         }
 
+        ChargeConstructionCost(type);
+
         var structure = new Structure
         {
             Id = State.AllocateStructureId(),
@@ -192,6 +215,8 @@ public sealed class Sim
             throw new ArgumentException($"Zone {commercialZoneId} is not a commercial zone", nameof(commercialZoneId));
         if (type.Category() != StructureCategory.Commercial)
             throw new ArgumentException($"{type} is not a commercial structure type", nameof(type));
+
+        ChargeConstructionCost(type);
 
         var structure = new Structure
         {

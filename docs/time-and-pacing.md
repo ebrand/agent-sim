@@ -115,7 +115,7 @@ Within a single tick, events fire in a defined order. This is critical for save/
 3. **Continuous transactions settle:**
    - All goods sales for the day (extractor → processor → manufacturer → storage → commercial → agent)
    - Updates structure cash balances
-4. **Monthly settlement** (day 30 only — all money flows happen here in a fixed sequence). Days 1, 8, 15, 22 are economic no-ops. The sequence:
+4. **Monthly settlement** (day 30 — all agent + treasury + commercial flows happen here in a fixed sequence). Days 1, 8, 15, 22 are no-ops for agent/treasury/commercial. The industrial chain runs daily for both goods movement AND inter-industrial cash transfers; only its end-of-month accumulators (`MonthlyRevenue` / `MonthlyExpenses`) are consumed in the settlement. The settlement sequence:
    1. **Treasury upkeep**: civic / healthcare / education / utility / affordable housing structures funded. Sets `UpkeepFundingFraction`. Partial-pay if treasury < total upkeep (pay treasury / 6 this month).
    2. **Agent outflows**: rent + utilities → treasury.
    3. **Structure outflows**: commercial / industrial utilities + property tax → treasury.

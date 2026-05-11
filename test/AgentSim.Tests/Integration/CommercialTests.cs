@@ -222,7 +222,8 @@ public class CommercialTests
         // The founders' bonus ($5,000 starting savings vs. regular $1,800/$3,000) ensures settlers
         // can survive the 90-day commercial construction window without emigrating.
         // After 90 days with no commercial: settlers are at $5,000 - 3 × $1,000 = $2,000 each.
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        // Service emigration disabled — this test only validates insolvency survival.
+        var sim = Sim.Create(new SimConfig { Seed = 42, ServiceEmigrationEnabled = false });
         sim.CreateResidentialZone();
 
         sim.Tick(90);  // full commercial construction window

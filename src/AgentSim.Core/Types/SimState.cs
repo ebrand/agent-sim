@@ -10,6 +10,7 @@ public sealed class SimState
     public required Region Region { get; init; }
     public required City City { get; init; }
     public required Prng Prng { get; init; }
+    public required SimConfig Config { get; init; }
 
     /// <summary>Day count from sim start. 1 tick = 1 day.</summary>
     public int CurrentTick { get; set; }

@@ -51,6 +51,7 @@ public sealed class Sim
             Region = region,
             City = city,
             Prng = prng,
+            Config = config,
         };
 
         return new Sim(state);
@@ -145,6 +146,35 @@ public sealed class Sim
             ConstructionTicks = 0,
             RequiredConstructionTicks = 90,
             SeatCapacity = Defaults.Education.SeatCapacityFor(type),
+        };
+        State.City.Structures[structure.Id] = structure;
+        return structure;
+    }
+
+    /// <summary>
+    /// Manually place a civic / healthcare / utility structure. These sit outside zones (no zone
+    /// requirement per `structures.md`). 90-tick construction. M9 scope: capacity + operational
+    /// state only; no operating cost, no jobs, no goods cost yet.
+    /// </summary>
+    public Structure PlaceServiceStructure(StructureType type)
+    {
+        var category = type.Category();
+        if (category != StructureCategory.Civic
+            && category != StructureCategory.Healthcare
+            && category != StructureCategory.Utility)
+        {
+            throw new ArgumentException($"{type} is not a civic/healthcare/utility structure type", nameof(type));
+        }
+
+        var structure = new Structure
+        {
+            Id = State.AllocateStructureId(),
+            Type = type,
+            ZoneId = 0,
+            ResidentialCapacity = 0,
+            ConstructionTicks = 0,
+            RequiredConstructionTicks = 90,
+            ServiceCapacity = Defaults.Services.CapacityFor(type),
         };
         State.City.Structures[structure.Id] = structure;
         return structure;

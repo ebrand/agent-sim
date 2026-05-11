@@ -121,7 +121,9 @@ Within a single tick, events fire in a defined order. This is critical for save/
    - Day 15: utilities paid, wage installment 2 (with income tax)
    - Day 22: sales tax
    - Day 30: property tax, end-of-month profitability check (after settlements)
-5. **End-of-month emigration check** (last tick of month, after all settlements): every agent runs the single emigration rule.
+5. **End-of-month emigration check** (last tick of month, after all settlements). Two passes, in this order:
+   - **Insolvency emigration**: every agent runs the wage+savings rule (see `economy.md`).
+   - **Worst-of service emigration**: every surviving agent rolls against the worst-of-service formula (see `feedback-loops.md`).
 6. **Notification firing and auto-pause checks.**
 7. **Autosave check.**
 

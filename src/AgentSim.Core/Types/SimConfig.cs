@@ -18,4 +18,12 @@ public sealed record SimConfig
     /// (require headroom under the cap). Default 2,000.
     /// </summary>
     public int InitialReservoirSize { get; init; } = 2_000;
+
+    /// <summary>
+    /// Whether worst-of service emigration (M9) is active. Default true — services
+    /// (civic / healthcare / education / utility) drive monthly per-agent emigration rolls based
+    /// on the lowest service satisfaction. Set false for tests that need to isolate other
+    /// mechanics from random service-pressure emigration.
+    /// </summary>
+    public bool ServiceEmigrationEnabled { get; init; } = true;
 }

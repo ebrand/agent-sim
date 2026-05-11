@@ -164,7 +164,9 @@ public class EducationTests
     [Fact]
     public void StudentCompletesEntirePath_UneducatedToCollege()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        // Service emigration off — 16-game-year ticking would otherwise emigrate the student
+        // before they finish (no civic/healthcare/utility coverage in this scenario).
+        var sim = Sim.Create(new SimConfig { Seed = 42, ServiceEmigrationEnabled = false });
         FastBuildSchool(sim, StructureType.PrimarySchool);
         FastBuildSchool(sim, StructureType.SecondarySchool);
         FastBuildSchool(sim, StructureType.College);
@@ -292,7 +294,13 @@ public class EducationTests
     {
         // End-to-end: a baby born via BirthMechanic should reach primary-school age (5 game-years
         // = 1800 days) and then enroll in a primary school that exists.
-        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 1_000 });
+        // Service emigration off — long tick window would otherwise emigrate the baby or its parents.
+        var sim = Sim.Create(new SimConfig
+        {
+            Seed = 42,
+            InitialReservoirSize = 1_000,
+            ServiceEmigrationEnabled = false,
+        });
         sim.CreateResidentialZone();
         FastBuildSchool(sim, StructureType.PrimarySchool);
 

@@ -147,6 +147,9 @@ public static class SettlementMechanic
         // End-of-month emigration check (agents whose savings went negative this month)
         EmigrationMechanic.EndOfMonthCheck(state);
 
+        // End-of-month service-pressure emigration (worst-of services below threshold)
+        ServiceEmigrationMechanic.EndOfMonthCheck(state);
+
         // Monthly births (after emigration so this month's emigrants don't count toward birth rate)
         BirthMechanic.RunMonthlyBirths(state);
     }

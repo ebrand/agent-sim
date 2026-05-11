@@ -97,8 +97,13 @@ public class MonthlySettlementTests
     {
         // Founders' bonus = $5,000. Pre-commercial expenses = $1,000/mo (rent + utilities, no COL).
         // End month 1: $4,000 / 2: $3,000 / 3: $2,000 / 4: $1,000 / 5: $0 (still non-negative).
-        // Use full-cap reservoir to disable births; this test only cares about settler behavior.
-        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
+        // Disable births (full reservoir) and service emigration; test focuses on settler insolvency only.
+        var sim = Sim.Create(new SimConfig
+        {
+            Seed = 42,
+            InitialReservoirSize = 60_000,
+            ServiceEmigrationEnabled = false,
+        });
         sim.CreateResidentialZone();
 
         sim.Tick(30 * 5);  // 5 months
@@ -137,8 +142,13 @@ public class MonthlySettlementTests
     public void Month5_AllSettlersHaveZeroSavings_ButStillInCity()
     {
         // End of month 5: $5,000 - 5 × $1,000 = $0 (non-negative — passes check)
-        // Use full-cap reservoir to disable births; this test only cares about settler behavior.
-        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
+        // Disable births (full reservoir) and service emigration; test focuses on settler insolvency only.
+        var sim = Sim.Create(new SimConfig
+        {
+            Seed = 42,
+            InitialReservoirSize = 60_000,
+            ServiceEmigrationEnabled = false,
+        });
         sim.CreateResidentialZone();
 
         sim.Tick(30 * 5);  // 5 months

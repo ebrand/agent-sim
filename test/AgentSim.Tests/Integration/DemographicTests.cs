@@ -75,7 +75,13 @@ public class DemographicTests
     {
         // 50 working-age settlers × 0.5% birth rate = 0.25 babies/month. The fractional
         // accumulator means a baby is born every 4 months (4 × 0.25 = 1.0).
-        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 1_000 });
+        // Service emigration disabled — this test only cares about birth mechanics.
+        var sim = Sim.Create(new SimConfig
+        {
+            Seed = 42,
+            InitialReservoirSize = 1_000,
+            ServiceEmigrationEnabled = false,
+        });
         sim.CreateResidentialZone();
 
         sim.Tick(30 * 4);
@@ -89,7 +95,12 @@ public class DemographicTests
     [Fact]
     public void Birth_BabyHasZeroAge_UneducatedTier_NoResidence()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 1_000 });
+        var sim = Sim.Create(new SimConfig
+        {
+            Seed = 42,
+            InitialReservoirSize = 1_000,
+            ServiceEmigrationEnabled = false,
+        });
         sim.CreateResidentialZone();
         sim.Tick(30 * 4);  // 1 baby born
 

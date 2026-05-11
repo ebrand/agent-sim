@@ -71,5 +71,8 @@ public sealed class Structure
     /// <summary>IDs of agents currently enrolled in this education structure.</summary>
     public List<long> EnrolledStudentIds { get; } = new();
 
+    /// <summary>Service capacity in agents served per month (civic / healthcare / utility). 0 for non-service.</summary>
+    public int ServiceCapacity { get; init; }
+
     public StructureCategory Category => Type.Category();
 }

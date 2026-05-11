@@ -89,7 +89,7 @@ public static class BootstrapMechanic
                 Id = state.AllocateAgentId(),
                 EducationTier = tier,
                 AgeDays = ageDays,
-                Savings = Bootstrap.StartingSavings(tier),
+                Savings = Bootstrap.FoundersStartingSavings,  // founders' bonus, see Bootstrap.cs
             };
             state.City.Agents[agent.Id] = agent;
 

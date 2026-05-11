@@ -141,31 +141,29 @@ public class CommercialTests
     }
 
     [Fact]
-    public void Day22_PaysSalesTaxFromCommercialRevenue()
+    public void OperationalCommercial_AccumulatesNetPositiveCashflow()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 0 });
+        // Verify that a commercial structure with employees and COL revenue ends a month
+        // with more cash than it started (revenue > expenses).
+        //
+        // Known M3 ordering quirk: sales tax (day 22) fires before COL revenue (day 30), so sales
+        // tax always sees $0 in M3. This is documented in the cynical follow-ups; M4+ may rearrange.
+        var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var commZone = sim.CreateCommercialZone();
         var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
 
-        sim.Tick(90);  // construction completes
-        shop.CashBalance = 100_000;  // seed cash for wages
+        // Skip construction so hiring happens before settlers run low
+        shop.ConstructionTicks = shop.RequiredConstructionTicks;
+        shop.CashBalance = 100_000;
 
-        // Advance one full month: COL fires on day 30, then sales tax on next month's day 22.
-        // To test sales tax on day 22 we need at least one full month of revenue accumulation.
-        // First month (ticks 91-120): COL fires on day 30 (tick 120)... wait, sales tax day 22 of month would be tick 112.
-        // But MonthlyRevenue resets at end of month (day 30), so day 22 sales tax fires on this month's revenue
-        // accumulated so far (which is $0 because COL hasn't fired yet).
-        //
-        // The cadence ordering is: day 22 (sales tax on this-month revenue so far) → day 30 (COL adds revenue → reset).
-        // So sales tax always fires on revenue from BEFORE day 22 in the same month.
-        // For M3, that means sales tax sees $0 most months unless commercial has other revenue.
-        // This is a known ordering quirk — covered in cynical follow-ups.
-        sim.Tick(30);
+        sim.Tick(30);  // one full month with employees and COL flow
 
-        // Sales tax: 0 because COL fires after sales tax in this cadence.
-        // (Test asserts the flow works; the revenue ordering is a known limitation.)
-        Assert.True(shop.CashBalance < 100_000, "Shop should have paid some expenses (utilities + property tax)");
+        // Shop should have received COL revenue from ~50 agents ($45,500-ish total)
+        // and paid wages (~$9,000), utilities ($2,000), property tax ($1,000)
+        // Net should be positive
+        Assert.True(shop.CashBalance > 100_000,
+            $"Shop should have net-positive cashflow after one month with employees and COL. CashBalance = {shop.CashBalance}");
     }
 
     [Fact]
@@ -200,8 +198,8 @@ public class CommercialTests
         sim.Tick(30);  // one month, no commercial
 
         var uneducated = sim.State.City.Agents.Values.First(a => a.EducationTier == EducationTier.Uneducated);
-        // Started $1,800, paid $800 rent + $200 utilities = $1,000 left (no COL deducted)
-        Assert.Equal(800, uneducated.Savings);
+        // Founders' bonus $5,000 - $800 rent - $200 utilities = $4,000 (no COL deducted because no commercial)
+        Assert.Equal(Bootstrap.FoundersStartingSavings - 800 - 200, uneducated.Savings);
     }
 
     [Fact]
@@ -219,6 +217,42 @@ public class CommercialTests
         // Treasury should have received residential utilities ($200 × remaining agents at this point) +
         // shop utilities ($2,000). And rent on day 1 ($800 × 50). And wages-income-tax (small but present).
         Assert.True(sim.State.City.TreasuryBalance > treasuryBeforeMonth);
+    }
+
+    [Fact]
+    public void FoundersBonus_SettlersSurviveCommercialConstructionWindow()
+    {
+        // The founders' bonus ($5,000 starting savings vs. regular $1,800/$3,000) ensures settlers
+        // can survive the 90-day commercial construction window without emigrating.
+        // After 90 days with no commercial: settlers are at $5,000 - 3 × $1,000 = $2,000 each.
+        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        sim.CreateResidentialZone();
+
+        sim.Tick(90);  // full commercial construction window
+
+        Assert.Equal(50, sim.State.City.Population);  // all settlers survived
+    }
+
+    [Fact]
+    public void RealisticBootstrap_PlaceCommercialOnDay1_SettlersHiredAfter90Days()
+    {
+        // Simulates a player who creates the residential zone, immediately creates a commercial
+        // zone, and immediately places a marketplace. After 90 days (construction completes), the
+        // marketplace becomes operational and hires from surviving settlers.
+        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        sim.CreateResidentialZone();
+        var commZone = sim.CreateCommercialZone();
+        var marketplace = sim.PlaceCommercialStructure(commZone.Id, StructureType.Marketplace);
+
+        sim.Tick(90);  // construction completes; marketplace operational; hiring runs
+
+        Assert.True(marketplace.Operational);
+        Assert.True(marketplace.EmployeeIds.Count > 0,
+            "Marketplace should have hired some settlers — they survived the construction window");
+        // Marketplace has 15 slots: 2 college (no settlers), 3 secondary (no settlers),
+        // 5 primary (5 of 20 primary settlers hired), 5 uneducated (5 of 30 uneducated settlers hired)
+        // Total expected: 10 employees from surviving population.
+        Assert.Equal(10, marketplace.EmployeeIds.Count);
     }
 
     [Fact]

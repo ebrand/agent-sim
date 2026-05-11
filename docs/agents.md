@@ -115,7 +115,7 @@ When an agent emigrates, they return to the regional reservoir matching their **
 The simulation is dormant until the player creates the first **residential zone**. At that moment:
 
 1. **N = 50 settlers** immigrate from the regional reservoir as a one-time burst.
-2. Each settler arrives with **starting savings sized to one month of expenses at their education tier** ($1,800 / $3,000 / $4,000 / $6,000 for uneducated / primary / secondary / college — see Immigrant starting savings below).
+2. Each settler arrives with a **founders' bonus** of **$5,000 starting savings** (flat, independent of education tier). This is substantially more than the regular immigrant savings (see Immigrant starting savings below) — sized to give settlers ~5 months of pre-commercial cushion to survive while the player builds the first commercial structure (which takes ~90 days from order to operational). Settlers are founders bringing extra resources from off-region; the bonus narratively distinct from regular immigration.
 3. The regional goods reservoir's bootstrap stock (200 lumber, 100 concrete, 40 glass — see `goods-and-recipes.md`) is consumed to construct settlers' homes via residential auto-spawn. With houses at 4 capacity each, ~13 houses cover all settlers.
 4. Settlers live without jobs until commercial zones are created.
 5. Once commercial zones exist and commercial structures auto-spawn within them, agents take commercial jobs and the immigration loop activates.

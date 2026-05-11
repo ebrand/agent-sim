@@ -39,7 +39,7 @@ public class MonthlySettlementTests
         sim.Tick(1);
 
         var uneducated = sim.State.City.Agents.Values.First(a => a.EducationTier == EducationTier.Uneducated);
-        Assert.Equal(Bootstrap.StartingSavings(EducationTier.Uneducated) - 800, uneducated.Savings);
+        Assert.Equal(Bootstrap.FoundersStartingSavings - 800, uneducated.Savings);
     }
 
     [Fact]
@@ -65,8 +65,8 @@ public class MonthlySettlementTests
         sim.Tick(15);
 
         var uneducated = sim.State.City.Agents.Values.First(a => a.EducationTier == EducationTier.Uneducated);
-        // Started $1,800, paid $800 rent + $200 utilities = $1,000 left
-        Assert.Equal(1_800 - 800 - 200, uneducated.Savings);
+        // Founders' bonus $5,000 minus $800 rent (day 1) minus $200 utilities (day 15) = $4,000
+        Assert.Equal(Bootstrap.FoundersStartingSavings - 800 - 200, uneducated.Savings);
     }
 
     [Fact]
@@ -93,19 +93,28 @@ public class MonthlySettlementTests
     }
 
     [Fact]
-    public void AfterTwoMonths_UneducatedSettlersEmigrate_NoJobs()
+    public void AfterFiveMonths_AllSettlersStillInCity_NoJobs()
     {
-        // Uneducated settler: $1,800 starting → -$1,000/mo expenses
-        // End of month 1: $800 (passes check)
-        // End of month 2: -$200 (savings goes negative when paying utilities) → fails → no AH → emigrate
+        // Founders' bonus = $5,000. Pre-commercial expenses = $1,000/mo (rent + utilities, no COL).
+        // End month 1: $4,000 / 2: $3,000 / 3: $2,000 / 4: $1,000 / 5: $0 (still non-negative).
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
 
-        sim.Tick(60);  // 2 months
+        sim.Tick(30 * 5);  // 5 months
 
-        var uneducatedRemaining = sim.State.City.Agents.Values
-            .Count(a => a.EducationTier == EducationTier.Uneducated);
-        Assert.Equal(0, uneducatedRemaining);
+        Assert.Equal(50, sim.State.City.Population);
+    }
+
+    [Fact]
+    public void AfterSixMonths_SettlersEmigrate_NoJobs()
+    {
+        // End of month 6: $5,000 - 6 × $1,000 = -$1,000 → fail emigration check → no AH → emigrate.
+        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        sim.CreateResidentialZone();
+
+        sim.Tick(30 * 6);  // 6 months
+
+        Assert.Equal(0, sim.State.City.Population);
     }
 
     [Fact]
@@ -114,47 +123,25 @@ public class MonthlySettlementTests
         var sim = Sim.Create(new SimConfig { Seed = 42, RegionalReservoirSize = 60_000 });
         sim.CreateResidentialZone();
 
-        var reservoirBeforeEmigration = sim.State.Region.AgentReservoir.Total;
-        Assert.Equal(60_000 - 50, reservoirBeforeEmigration);
+        Assert.Equal(60_000 - 50, sim.State.Region.AgentReservoir.Total);
 
-        sim.Tick(60);  // uneducated emigrate at end of month 2
+        sim.Tick(30 * 6);  // 6 months — all settlers emigrate
 
-        // 30 uneducated returned to reservoir, 20 primary still in city
-        Assert.Equal(60_000 - 20, sim.State.Region.AgentReservoir.Total);
+        // All 50 returned to reservoir at their education tiers (30 uneducated + 20 primary)
+        Assert.Equal(60_000, sim.State.Region.AgentReservoir.Total);
     }
 
     [Fact]
-    public void AfterFourMonths_PrimarySettlersEmigrate_NoJobs()
+    public void Month5_AllSettlersHaveZeroSavings_ButStillInCity()
     {
-        // Primary settler: $3,000 starting → -$1,000/mo expenses
-        // End month 1: $2,000 (pass)
-        // End month 2: $1,000 (pass)
-        // End month 3: $0 (pass — savings non-negative)
-        // End month 4: -$1,000 (fail) → no AH → emigrate
+        // End of month 5: $5,000 - 5 × $1,000 = $0 (non-negative — passes check)
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
 
-        sim.Tick(30 * 4);  // 4 months
+        sim.Tick(30 * 5);  // 5 months
 
-        var primaryRemaining = sim.State.City.Agents.Values
-            .Count(a => a.EducationTier == EducationTier.Primary);
-        Assert.Equal(0, primaryRemaining);
-    }
-
-    [Fact]
-    public void Month3_PrimarySettlersHaveZeroSavings_ButStillInCity()
-    {
-        // Primary settler at end of month 3: savings = $0 (non-negative — passes check)
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-
-        sim.Tick(30 * 3);  // 3 months
-
-        var primaryAgents = sim.State.City.Agents.Values
-            .Where(a => a.EducationTier == EducationTier.Primary)
-            .ToList();
-        Assert.Equal(20, primaryAgents.Count);
-        Assert.All(primaryAgents, a => Assert.Equal(0, a.Savings));
+        Assert.Equal(50, sim.State.City.Population);
+        Assert.All(sim.State.City.Agents.Values, a => Assert.Equal(0, a.Savings));
     }
 
     [Fact]

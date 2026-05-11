@@ -134,17 +134,16 @@ public class BootstrapTests
     }
 
     [Fact]
-    public void Bootstrap_SettlersHaveStartingSavings()
+    public void Bootstrap_SettlersGetFoundersBonusSavings()
     {
+        // Settlers receive a founders' bonus (flat $5,000) instead of the per-tier immigrant savings.
+        // This gives them ~5 months of pre-commercial cushion to survive while the player builds commercial.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
 
         sim.CreateResidentialZone();
 
-        var uneducated = sim.State.City.Agents.Values.First(a => a.EducationTier == EducationTier.Uneducated);
-        var primary = sim.State.City.Agents.Values.First(a => a.EducationTier == EducationTier.Primary);
-
-        Assert.Equal(Bootstrap.StartingSavings(EducationTier.Uneducated), uneducated.Savings);
-        Assert.Equal(Bootstrap.StartingSavings(EducationTier.Primary), primary.Savings);
+        Assert.All(sim.State.City.Agents.Values,
+            a => Assert.Equal(Bootstrap.FoundersStartingSavings, a.Savings));
     }
 
     [Fact]

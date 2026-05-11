@@ -17,7 +17,7 @@ public static class Bootstrap
             [ManufacturedGood.MetalGoods] = 0,
         };
 
-    /// <summary>Immigrant starting savings by education tier.</summary>
+    /// <summary>Immigrant starting savings by education tier (post-bootstrap immigrants).</summary>
     public static int StartingSavings(EducationTier tier) => tier switch
     {
         EducationTier.Uneducated => 1_800,
@@ -26,4 +26,19 @@ public static class Bootstrap
         EducationTier.College => 6_000,
         _ => throw new ArgumentOutOfRangeException(nameof(tier)),
     };
+
+    /// <summary>
+    /// Founders' starting savings — for the one-time bootstrap settler burst. Substantially
+    /// higher than regular immigrant savings to cover the 90-day window during which the player
+    /// builds the first commercial structure.
+    ///
+    /// Rationale: regular immigrant savings ($1,800–$6,000) are sized for "1 month of expenses"
+    /// assuming commercial infrastructure exists. Bootstrap settlers arrive before any commercial
+    /// exists; commercial takes 90 days to build; without a founders' bonus, all settlers would
+    /// run out of savings and emigrate before the first shop opens. The founders' bonus provides
+    /// ~5 months of cushion (rent + utilities = $1,000/mo for tier-1 housing; $5,000 ≈ 5 months).
+    ///
+    /// Flat across all tiers since pre-commercial expenses (rent + utilities, no COL) are the same.
+    /// </summary>
+    public const int FoundersStartingSavings = 5_000;
 }

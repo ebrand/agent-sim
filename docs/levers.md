@@ -182,11 +182,13 @@ Per-structure-type placeholder values until the spatial layer lands. Full table 
 ## Immigration
 
 - **Mass-immigration cap formula** — default `max(50, 1% × city_population)` per month
-- **Immigrant starting savings** (by tier):
+- **Immigrant starting savings** (by tier, for post-bootstrap immigration):
   - Uneducated: $1,800
   - Primary: $3,000
   - Secondary: $4,000
   - College: $6,000
+- **Founders' starting savings** (flat, for the one-time bootstrap settler burst): $5,000
+  - Higher than regular immigrant savings to give settlers a cushion during the 90-day commercial construction window.
 
 ## Treasury & Game
 

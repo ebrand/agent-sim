@@ -1,9 +1,6 @@
 using AgentSim.Core.Sim;
 using AgentSim.Core.Types;
 
-// Minimal CLI runner — exists so the solution has a runnable entry point during alpha-1.
-// Real UI lives in `ui-and-player.md`; this is just for smoke-testing.
-
 var sim = Sim.Create(new SimConfig { Seed = 42 });
 Console.WriteLine($"Sim created. Reservoir total: {sim.State.Region.AgentReservoir.Total}");
 

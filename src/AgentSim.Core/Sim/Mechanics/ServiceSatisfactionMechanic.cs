@@ -26,9 +26,10 @@ public static class ServiceSatisfactionMechanic
     {
         var city = state.City;
 
-        // M10: treasury-funded services (civic / healthcare / education / utility) contribute
-        // zero capacity when the treasury is negative — upkeep failures collapse satisfaction.
-        var bankrupt = city.TreasuryBalance < 0;
+        // M10: treasury-funded services (civic / healthcare / education / utility) scale their
+        // capacity by the fraction of upkeep paid this month. Full pay → 1.0 (no reduction);
+        // partial-pay → fractional; zero-pay → 0%.
+        var fundingFraction = city.UpkeepFundingFraction;
 
         // Civic / healthcare demand = total city population. Per `structures.md`,
         // capacities serve "agents" without further qualification.
@@ -53,16 +54,15 @@ public static class ServiceSatisfactionMechanic
         var collegeAgeDemand = city.Agents.Values.Count(a =>
             a.AgeDays >= Demographics.SecondaryAgeEndDay && a.AgeDays < Demographics.CollegeAgeEndDay);
 
-        // Capacity = sum over operational, non-inactive structures of the relevant capacity field.
-        // When bankrupt, treasury-funded categories contribute zero (their upkeep was unpaid this
-        // month or the treasury has been overdrawn).
-        int CapacityOfCategory(StructureCategory cat) => bankrupt ? 0 : city.Structures.Values
+        // Capacity = sum over operational, non-inactive structures of the relevant capacity field,
+        // scaled by this month's upkeep funding fraction.
+        int CapacityOfCategory(StructureCategory cat) => (int)(fundingFraction * city.Structures.Values
             .Where(s => s.Category == cat && s.Operational && !s.Inactive)
-            .Sum(s => s.ServiceCapacity);
+            .Sum(s => s.ServiceCapacity));
 
-        int SchoolCapacity(StructureType type) => bankrupt ? 0 : city.Structures.Values
+        int SchoolCapacity(StructureType type) => (int)(fundingFraction * city.Structures.Values
             .Where(s => s.Type == type && s.Operational && !s.Inactive)
-            .Sum(s => s.SeatCapacity);
+            .Sum(s => s.SeatCapacity));
 
         return new Snapshot
         {

@@ -14,8 +14,9 @@ public sealed class Structure
     /// </summary>
     public int ConstructionTicks { get; set; }
 
-    /// <summary>Total ticks required to complete construction (default 90 = 3 months).</summary>
-    public int RequiredConstructionTicks { get; init; } = 90;
+    /// <summary>Total ticks required to complete construction. Default 7 = 1 game-week. Tuning
+    /// target: enough cost to make placement feel real, short enough to keep early-game responsive.</summary>
+    public int RequiredConstructionTicks { get; init; } = 7;
 
     public bool Operational => ConstructionTicks >= RequiredConstructionTicks;
     public bool UnderConstruction => !Operational;

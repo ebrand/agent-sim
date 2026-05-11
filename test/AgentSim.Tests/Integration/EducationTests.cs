@@ -80,7 +80,8 @@ public class EducationTests
         var school = sim.PlaceEducationStructure(StructureType.PrimarySchool);  // NOT fast-built
         var student = AddStudent(sim, ageDays: 6 * 360, startingTier: EducationTier.Uneducated);
 
-        sim.Tick(10);
+        // Tick a few days while still under construction (default 7-day window).
+        sim.Tick(school.RequiredConstructionTicks - 1);
 
         Assert.Null(student.EnrolledStructureId);
         Assert.Empty(school.EnrolledStudentIds);
@@ -131,7 +132,9 @@ public class EducationTests
     [Fact]
     public void StudentCompletesPrimary_AdvancesToPrimaryTier_AndEnrollsInSecondary()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        // Long-running test: 6 game-years of school upkeep. Fund the treasury heavily so
+        // partial-pay → bankruptcy → game-over halt never fires.
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 100_000_000 });
         var primary = FastBuildSchool(sim, StructureType.PrimarySchool);
         var secondary = FastBuildSchool(sim, StructureType.SecondarySchool);
         var student = AddStudent(sim, ageDays: 5 * 360, startingTier: EducationTier.Uneducated);
@@ -150,7 +153,8 @@ public class EducationTests
     [Fact]
     public void StudentCompletesPrimary_NoSecondarySchool_EntersWorkforceAtCurrentTier()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        // Long-running: see comment on StudentCompletesPrimary_Advances... for treasury sizing.
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 100_000_000 });
         var primary = FastBuildSchool(sim, StructureType.PrimarySchool);
         var student = AddStudent(sim, ageDays: 5 * 360, startingTier: EducationTier.Uneducated);
 
@@ -164,9 +168,14 @@ public class EducationTests
     [Fact]
     public void StudentCompletesEntirePath_UneducatedToCollege()
     {
-        // Service emigration off — 16-game-year ticking would otherwise emigrate the student
-        // before they finish (no civic/healthcare/utility coverage in this scenario).
-        var sim = Sim.Create(new SimConfig { Seed = 42, ServiceEmigrationEnabled = false });
+        // Long-running (16 game-years). Service emigration off and treasury hugely funded so
+        // partial-pay bankruptcy doesn't halt the sim mid-test.
+        var sim = Sim.Create(new SimConfig
+        {
+            Seed = 42,
+            ServiceEmigrationEnabled = false,
+            StartingTreasury = 100_000_000,
+        });
         FastBuildSchool(sim, StructureType.PrimarySchool);
         FastBuildSchool(sim, StructureType.SecondarySchool);
         FastBuildSchool(sim, StructureType.College);
@@ -234,7 +243,8 @@ public class EducationTests
         // Enroll an agent at age 10y (in primary band 5-11) — they'll be 16y when primary completes
         // (10 + 6 = 16). 16 is past primary band (which ends at 11) but per design they should
         // still complete primary because completion is attendance-based.
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        // Long-running: heavily fund treasury to keep upkeep in full-pay mode.
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 100_000_000 });
         var primary = FastBuildSchool(sim, StructureType.PrimarySchool);
         var student = AddStudent(sim, ageDays: 10 * 360, startingTier: EducationTier.Uneducated);
 
@@ -295,11 +305,13 @@ public class EducationTests
         // End-to-end: a baby born via BirthMechanic should reach primary-school age (5 game-years
         // = 1800 days) and then enroll in a primary school that exists.
         // Service emigration off — long tick window would otherwise emigrate the baby or its parents.
+        // Treasury heavily funded so the school's monthly upkeep doesn't trigger partial-pay → game-over halt.
         var sim = Sim.Create(new SimConfig
         {
             Seed = 42,
             InitialReservoirSize = 1_000,
             ServiceEmigrationEnabled = false,
+            StartingTreasury = 100_000_000,
         });
         sim.CreateResidentialZone();
         FastBuildSchool(sim, StructureType.PrimarySchool);

@@ -6,24 +6,27 @@ namespace AgentSim.Core.Defaults;
 /// Monthly treasury upkeep per structure type. Settled on day 1 each month, before agent rent
 /// (per `time-and-pacing.md` "outflows before inflows" sub-ordering).
 ///
-/// Values from `economy.md` "Monthly upkeep" table. Alpha-1 calibration is loose; the design
-/// targets a 50k-population mid-game where rent revenue (~$75M/month) dwarfs upkeep (~$2.5M/month).
-/// Early-game (50 settlers) cannot afford even one of each type — gameplay arc requires the player
-/// to delay service buildout until population can fund it.
+/// Alpha-1 calibration target: a modest founding city (1 PoliceStation + 1 Clinic + 1 PrimarySchool
+/// + 1 Generator + 1 Well = $115k/month) sustains ~6 months of full-pay against a $500k starting
+/// treasury and ~$50k/month bootstrap income (50 settlers' rent + utilities, no wages yet). After
+/// 6 months of full pay, treasury drops below the upkeep threshold and partial-pay kicks in for
+/// another ~6 months before game-over fires — giving the player ~12 months total to react.
+/// These values are lower than the design table in `economy.md` (which is calibrated for a 50k
+/// mid-game city); revisit when scaling up.
 /// </summary>
 public static class Upkeep
 {
-    public const int PoliceStation = 30_000;
-    public const int FireStation = 30_000;
-    public const int TownHall = 90_000;
-    public const int Clinic = 60_000;
-    public const int Hospital = 250_000;
-    public const int PrimarySchool = 60_000;
-    public const int SecondarySchool = 90_000;
-    public const int College = 180_000;
-    public const int Generator = 80_000;
-    public const int Well = 50_000;
-    public const int AffordableHousing = 20_000;
+    public const int PoliceStation = 15_000;
+    public const int FireStation = 15_000;
+    public const int TownHall = 50_000;
+    public const int Clinic = 25_000;
+    public const int Hospital = 120_000;
+    public const int PrimarySchool = 25_000;
+    public const int SecondarySchool = 50_000;
+    public const int College = 100_000;
+    public const int Generator = 30_000;
+    public const int Well = 20_000;
+    public const int AffordableHousing = 10_000;
 
     /// <summary>Monthly upkeep cost for the given structure type. 0 for non-treasury-funded types.</summary>
     public static int MonthlyCost(StructureType type) => type switch

@@ -43,14 +43,14 @@ public class CommercialTests
     }
 
     [Fact]
-    public void Shop_BecomesOperationalAfter90Ticks()
+    public void Shop_BecomesOperationalAfterConstructionWindow()
     {
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var commZone = sim.CreateCommercialZone();
         var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
 
-        sim.Tick(90);
+        sim.Tick(shop.RequiredConstructionTicks);
 
         Assert.True(shop.Operational);
     }
@@ -63,7 +63,7 @@ public class CommercialTests
         var commZone = sim.CreateCommercialZone();
         var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
 
-        sim.Tick(90);  // construction completes
+        sim.Tick(shop.RequiredConstructionTicks + 1);  // construction completes + 1 day of hiring
 
         // Shop has 1 college + 1 secondary + 2 primary + 1 uneducated = 5 total slots.
         // Only uneducated and primary settlers exist (30 + 20). Higher tiers should be filled by
@@ -104,7 +104,7 @@ public class CommercialTests
         var commZone = sim.CreateCommercialZone();
         var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
 
-        sim.Tick(90);
+        sim.Tick(shop.RequiredConstructionTicks + 1);
 
         Assert.Equal(0, shop.FilledSlots.GetValueOrDefault(EducationTier.College));
         Assert.Equal(0, shop.FilledSlots.GetValueOrDefault(EducationTier.Secondary));
@@ -171,9 +171,9 @@ public class CommercialTests
         var commZone = sim.CreateCommercialZone();
         var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
 
-        sim.Tick(90);  // construction completes
+        sim.Tick(shop.RequiredConstructionTicks);  // construction completes
         var cashBefore = shop.CashBalance;
-        sim.Tick(30);  // through next month's day 30
+        sim.Tick(30);  // through next month's day 30 — COL fires on the upcoming day-30 boundary
 
         // Each agent (50 total) paid COL based on their tier:
         //   Uneducated (30): $2,000 × 35% = $700 each → $21,000
@@ -202,47 +202,53 @@ public class CommercialTests
     [Fact]
     public void CommercialStructure_PaysUtilitiesOnDay15()
     {
+        // Shop should pay $2k utilities on day 15; verify treasury receives them.
         var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 0 });
         sim.CreateResidentialZone();
         var commZone = sim.CreateCommercialZone();
         var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
 
-        sim.Tick(90);  // construction
-        var treasuryBeforeMonth = sim.State.City.TreasuryBalance;
-        sim.Tick(15);  // tick through day 15 of next month
+        sim.Tick(shop.RequiredConstructionTicks);  // construction completes at tick 7
 
-        // Treasury should have received residential utilities ($200 × remaining agents at this point) +
-        // shop utilities ($2,000). And rent on day 1 ($800 × 50). And wages-income-tax (small but present).
-        Assert.True(sim.State.City.TreasuryBalance > treasuryBeforeMonth);
+        // Walk to tick 14 (just before day 15 of month 1 — current month's day-15 already passed
+        // on tick 15 before shop was operational). Need shop operational across a day-15 boundary.
+        // Tick to day 15 of next month = tick 45.
+        var snapshotTick = sim.State.CurrentTick;
+        var snapshotTreasury = sim.State.City.TreasuryBalance;
+
+        sim.Tick(45 - snapshotTick);  // tick to day 15 of month 2
+
+        // Treasury accumulated rent on day 31 (~$40k) + agent utils on day 45 (~$10k) + shop utils ($2k).
+        Assert.True(sim.State.City.TreasuryBalance > snapshotTreasury,
+            $"Treasury should grow with rent + utilities. Snapshot {snapshotTreasury} → now {sim.State.City.TreasuryBalance}.");
     }
 
     [Fact]
     public void FoundersBonus_SettlersSurviveCommercialConstructionWindow()
     {
-        // The founders' bonus ($5,000 starting savings vs. regular $1,800/$3,000) ensures settlers
-        // can survive the 90-day commercial construction window without emigrating.
-        // After 90 days with no commercial: settlers are at $5,000 - 3 × $1,000 = $2,000 each.
+        // The founders' bonus ($5,000 starting savings) ensures settlers can survive the
+        // commercial-construction window without emigrating.
         // Service emigration disabled — this test only validates insolvency survival.
         var sim = Sim.Create(new SimConfig { Seed = 42, ServiceEmigrationEnabled = false });
         sim.CreateResidentialZone();
 
-        sim.Tick(90);  // full commercial construction window
+        sim.Tick(7);  // commercial construction window (now 7 days)
 
         Assert.Equal(50, sim.State.City.Population);  // all settlers survived
     }
 
     [Fact]
-    public void RealisticBootstrap_PlaceCommercialOnDay1_SettlersHiredAfter90Days()
+    public void RealisticBootstrap_PlaceCommercialOnDay1_SettlersHiredAfterConstruction()
     {
         // Simulates a player who creates the residential zone, immediately creates a commercial
-        // zone, and immediately places a marketplace. After 90 days (construction completes), the
-        // marketplace becomes operational and hires from surviving settlers.
+        // zone, and immediately places a marketplace. After construction, the marketplace becomes
+        // operational and hires from surviving settlers.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var commZone = sim.CreateCommercialZone();
         var marketplace = sim.PlaceCommercialStructure(commZone.Id, StructureType.Marketplace);
 
-        sim.Tick(90);  // construction completes; marketplace operational; hiring runs
+        sim.Tick(marketplace.RequiredConstructionTicks + 1);  // construction completes; hiring runs
 
         Assert.True(marketplace.Operational);
         Assert.True(marketplace.EmployeeIds.Count > 0,
@@ -266,8 +272,8 @@ public class CommercialTests
         var shop1 = sim1.PlaceCommercialStructure(z1.Id, StructureType.Shop);
         var shop2 = sim2.PlaceCommercialStructure(z2.Id, StructureType.Shop);
 
-        sim1.Tick(90);
-        sim2.Tick(90);
+        sim1.Tick(shop1.RequiredConstructionTicks + 1);
+        sim2.Tick(shop2.RequiredConstructionTicks + 1);
 
         // Employee IDs should be identical (FIFO ordering is deterministic)
         Assert.Equal(shop1.EmployeeIds.OrderBy(x => x), shop2.EmployeeIds.OrderBy(x => x));

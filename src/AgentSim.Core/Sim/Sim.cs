@@ -115,7 +115,7 @@ public sealed class Sim
             ZoneId = 0,  // industrial sits outside zones
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 90,
+            RequiredConstructionTicks = 7,
             JobSlots = Industrial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
             InternalStorageCapacity = capacity,
         };
@@ -144,7 +144,7 @@ public sealed class Sim
             ZoneId = 0,
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 90,
+            RequiredConstructionTicks = 7,
             SeatCapacity = Defaults.Education.SeatCapacityFor(type),
         };
         State.City.Structures[structure.Id] = structure;
@@ -173,7 +173,7 @@ public sealed class Sim
             ZoneId = 0,
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 90,
+            RequiredConstructionTicks = 7,
             ServiceCapacity = Defaults.Services.CapacityFor(type),
         };
         State.City.Structures[structure.Id] = structure;
@@ -200,7 +200,7 @@ public sealed class Sim
             ZoneId = zone.Id,
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 90,
+            RequiredConstructionTicks = 7,
             JobSlots = Commercial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
         };
         State.City.Structures[structure.Id] = structure;
@@ -221,6 +221,11 @@ public sealed class Sim
     {
         for (int i = 0; i < days; i++)
         {
+            // M10: game-over halts the simulation. Further ticks are no-ops until the flag is
+            // cleared (e.g. UI reset). Per `feedback-loops.md`, this fires after 6 consecutive
+            // months of partial-pay (upkeep underfunded).
+            if (State.City.GameOver) return;
+
             State.CurrentTick++;
 
             // Daily events

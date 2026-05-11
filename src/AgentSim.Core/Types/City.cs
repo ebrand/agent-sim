@@ -17,11 +17,18 @@ public sealed class City
     /// <summary>Fractional births accumulator. When this exceeds 1.0, integer babies are born and the accumulator decreases.</summary>
     public double BirthFractionalAccumulator { get; set; }
 
-    /// <summary>Number of consecutive end-of-months the treasury has been negative. Resets to 0
-    /// when the treasury is non-negative at end-of-month. 6 → game-over per `feedback-loops.md`.</summary>
+    /// <summary>Number of consecutive months the city has been in partial-pay mode (treasury
+    /// below total upkeep at the day-1 check). Resets to 0 when the city pays full upkeep at
+    /// day 1. 6 → game-over per `feedback-loops.md`.</summary>
     public int ConsecutiveMonthsBankrupt { get; set; }
 
-    /// <summary>Set true when the treasury has been negative for 6 consecutive end-of-months.
-    /// Sim continues to tick — UI / player code consumes this flag.</summary>
+    /// <summary>Set true when ConsecutiveMonthsBankrupt reaches 6. Halts the simulation: subsequent
+    /// Tick() calls become no-ops until the flag is cleared by external code (e.g. UI reset).</summary>
     public bool GameOver { get; set; }
+
+    /// <summary>Fraction of monthly upkeep that was funded on day 1 of the CURRENT month. 1.0 when
+    /// the city paid full upkeep; less than 1.0 when treasury was insufficient and partial-pay
+    /// kicked in. Drives service capacity scaling for the month — services run at this fraction
+    /// of their nominal capacity. Reset to 1.0 at the start of each new month's upkeep payment.</summary>
+    public double UpkeepFundingFraction { get; set; } = 1.0;
 }

@@ -20,7 +20,7 @@ public sealed class Structure
     public bool Operational => ConstructionTicks >= RequiredConstructionTicks;
     public bool UnderConstruction => !Operational;
 
-    /// <summary>Whether the structure has gone inactive due to unprofitability (only relevant for commercial / industrial).</summary>
+    /// <summary>Whether the structure has gone inactive due to unprofitability (relevant for commercial / industrial).</summary>
     public bool Inactive { get; set; }
 
     /// <summary>Whether the previous month was unprofitable (warning state before going inactive).</summary>
@@ -31,6 +31,24 @@ public sealed class Structure
 
     /// <summary>Current resident IDs, for residential structures. Empty for non-residential.</summary>
     public List<long> ResidentIds { get; } = new();
+
+    /// <summary>Job slots by required education tier (commercial / industrial / civic / etc.). Empty for residential.</summary>
+    public Dictionary<EducationTier, int> JobSlots { get; init; } = new();
+
+    /// <summary>Currently employed agent IDs (anywhere with jobs).</summary>
+    public List<long> EmployeeIds { get; } = new();
+
+    /// <summary>Per-tier count of currently filled slots — derived from EmployeeIds but cached for fast checks.</summary>
+    public Dictionary<EducationTier, int> FilledSlots { get; } = new();
+
+    /// <summary>Structure's cash balance — used for commercial/industrial to fund wages, taxes, utilities.</summary>
+    public int CashBalance { get; set; }
+
+    /// <summary>Revenue accumulated this month (reset at end of month).</summary>
+    public int MonthlyRevenue { get; set; }
+
+    /// <summary>Expenses accumulated this month (reset at end of month). Used for profitability check (M5+).</summary>
+    public int MonthlyExpenses { get; set; }
 
     public StructureCategory Category => Type.Category();
 }

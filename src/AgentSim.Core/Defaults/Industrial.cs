@@ -45,6 +45,8 @@ public static class Industrial
         StructureType.SandPit => RawMaterial.Sand,
         StructureType.Farm => RawMaterial.Crops,
         StructureType.OilWell => RawMaterial.Petroleum,
+        StructureType.Ranch => RawMaterial.Livestock,         // M14c
+        StructureType.CottonFarm => RawMaterial.RawCotton,    // M14c
         _ => null,
     };
 
@@ -56,9 +58,11 @@ public static class Industrial
         StructureType.Mill => (RawMaterial.Crops, ProcessedGood.Grain),
         StructureType.AggregatePlant => (RawMaterial.Rock, ProcessedGood.Aggregate),
         StructureType.SilicatePlant => (RawMaterial.Sand, ProcessedGood.Silicate),
-        StructureType.FuelRefinery => (RawMaterial.Petroleum, ProcessedGood.Fuel),       // M14b: now consumes oil
-        StructureType.PulpMill => (RawMaterial.Wood, ProcessedGood.Pulp),                 // M14b
-        StructureType.PlasticPlant => (RawMaterial.Petroleum, ProcessedGood.Plastic),     // M14b
+        StructureType.FuelRefinery => (RawMaterial.Petroleum, ProcessedGood.Fuel),
+        StructureType.PulpMill => (RawMaterial.Wood, ProcessedGood.Pulp),
+        StructureType.PlasticPlant => (RawMaterial.Petroleum, ProcessedGood.Plastic),
+        StructureType.Slaughterhouse => (RawMaterial.Livestock, ProcessedGood.Meat),     // M14c
+        StructureType.Ginnery => (RawMaterial.RawCotton, ProcessedGood.Cotton),           // M14c
         _ => null,
     };
 
@@ -90,13 +94,14 @@ public static class Industrial
             }, ManufacturedGood.MetalGoods),
         StructureType.FoodPackingPlant => (
             new (ProcessedGood, int)[] {
-                (ProcessedGood.Grain, 4),
+                (ProcessedGood.Grain, 3),
+                (ProcessedGood.Meat, 2),       // M14c: Slaughterhouse output
                 (ProcessedGood.Plastic, 1),
                 (ProcessedGood.Silicate, 1),   // glass jars
             }, ManufacturedGood.Food),
         StructureType.ClothingFactory => (
             new (ProcessedGood, int)[] {
-                (ProcessedGood.Textiles, 2),
+                (ProcessedGood.Cotton, 2),     // M14c: was Textiles; Cotton from Ginnery
                 (ProcessedGood.Plastic, 1),    // synthetic fibers
             }, ManufacturedGood.Clothing),
         StructureType.ConcretePlant => (
@@ -122,6 +127,8 @@ public static class Industrial
         RawMaterial.Sand => 2,
         RawMaterial.Coal => 2,
         RawMaterial.Petroleum => 5,    // M14b
+        RawMaterial.Livestock => 4,    // M14c
+        RawMaterial.RawCotton => 2,    // M14c
         _ => throw new ArgumentOutOfRangeException(nameof(good)),
     };
 
@@ -136,6 +143,8 @@ public static class Industrial
         ProcessedGood.Fuel => 8,
         ProcessedGood.Plastic => 10,   // M14b
         ProcessedGood.Pulp => 3,       // M14b
+        ProcessedGood.Meat => 7,       // M14c
+        ProcessedGood.Cotton => 4,     // M14c
         _ => throw new ArgumentOutOfRangeException(nameof(good)),
     };
 
@@ -167,6 +176,8 @@ public static class Industrial
         StructureType.SandPit => 80_000,
         StructureType.Farm => 100_000,
         StructureType.OilWell => 250_000,           // M14b
+        StructureType.Ranch => 100_000,             // M14c
+        StructureType.CottonFarm => 100_000,        // M14c
         // Processors
         StructureType.Sawmill => 200_000,
         StructureType.Smelter => 400_000,
@@ -176,6 +187,8 @@ public static class Industrial
         StructureType.FuelRefinery => 400_000,
         StructureType.PulpMill => 200_000,          // M14b
         StructureType.PlasticPlant => 400_000,      // M14b
+        StructureType.Slaughterhouse => 200_000,    // M14c
+        StructureType.Ginnery => 200_000,           // M14c
         // Manufacturers
         StructureType.HouseholdFactory => 300_000,
         StructureType.BldgSuppliesFactory => 300_000,
@@ -203,6 +216,8 @@ public static class Industrial
         StructureType.SandPit => 1_000,
         StructureType.Farm => 1_000,
         StructureType.OilWell => 3_000,             // M14b
+        StructureType.Ranch => 1_000,               // M14c
+        StructureType.CottonFarm => 1_000,          // M14c
         // Processors
         StructureType.Sawmill => 3_000,
         StructureType.Smelter => 5_000,
@@ -212,6 +227,8 @@ public static class Industrial
         StructureType.FuelRefinery => 5_000,
         StructureType.PulpMill => 3_000,            // M14b
         StructureType.PlasticPlant => 5_000,        // M14b
+        StructureType.Slaughterhouse => 3_000,      // M14c
+        StructureType.Ginnery => 3_000,             // M14c
         // Manufacturers
         StructureType.HouseholdFactory => 4_000,
         StructureType.BldgSuppliesFactory => 4_000,

@@ -52,6 +52,12 @@ public static class Construction
     public const int PlasticPlant = 350_000;    // petrochemical
     public const int PaperMill = 300_000;       // paper manufacturer
 
+    // M14c additions (Agriculture diversification)
+    public const int Ranch = 150_000;           // livestock extractor
+    public const int CottonFarm = 150_000;      // cotton extractor
+    public const int Slaughterhouse = 250_000;  // livestock processor
+    public const int Ginnery = 250_000;         // cotton processor
+
     /// <summary>
     /// Construction multiplier (× monthly upkeep) for treasury-funded structures. Lets each
     /// structure type set its own capital-to-operating ratio. Returns 0 for non-treasury-funded.
@@ -120,6 +126,11 @@ public static class Construction
             StructureType.PulpMill => PulpMill,
             StructureType.PlasticPlant => PlasticPlant,
             StructureType.PaperMill => PaperMill,
+            // M14c (Agriculture diversification)
+            StructureType.Ranch => Ranch,
+            StructureType.CottonFarm => CottonFarm,
+            StructureType.Slaughterhouse => Slaughterhouse,
+            StructureType.Ginnery => Ginnery,
             _ => 0,
         };
     }

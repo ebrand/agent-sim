@@ -52,8 +52,13 @@ public static class Industry
         },
         IndustryType.Agriculture => new[]
         {
+            // M14c: an Agriculture HQ can diversify across crops, livestock, and cotton.
             StructureType.Farm,
             StructureType.Mill,
+            StructureType.Ranch,
+            StructureType.Slaughterhouse,
+            StructureType.CottonFarm,
+            StructureType.Ginnery,
         },
         _ => Array.Empty<StructureType>(),
     };

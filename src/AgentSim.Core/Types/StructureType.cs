@@ -25,6 +25,8 @@ public enum StructureType
     SandPit,
     Farm,
     OilWell,           // M14b: petroleum extraction for the Oil industry
+    Ranch,             // M14c: livestock under the Agriculture industry
+    CottonFarm,        // M14c: raw cotton under the Agriculture industry
 
     // Industrial — processors
     Sawmill,
@@ -35,6 +37,8 @@ public enum StructureType
     FuelRefinery,
     PulpMill,          // M14b: Wood → Pulp
     PlasticPlant,      // M14b: Petroleum → Plastic
+    Slaughterhouse,    // M14c: Livestock → Meat
+    Ginnery,           // M14c: RawCotton → Cotton
 
     // Industrial — manufacturers
     HouseholdFactory,
@@ -101,12 +105,14 @@ public static class StructureTypeExtensions
 
         StructureType.ForestExtractor or StructureType.Mine or StructureType.CoalMine
             or StructureType.Quarry or StructureType.SandPit or StructureType.Farm
-            or StructureType.OilWell => StructureCategory.IndustrialExtractor,
+            or StructureType.OilWell or StructureType.Ranch
+            or StructureType.CottonFarm => StructureCategory.IndustrialExtractor,
 
         StructureType.Sawmill or StructureType.Smelter or StructureType.Mill
             or StructureType.AggregatePlant or StructureType.SilicatePlant
             or StructureType.FuelRefinery or StructureType.PulpMill
-            or StructureType.PlasticPlant => StructureCategory.IndustrialProcessor,
+            or StructureType.PlasticPlant or StructureType.Slaughterhouse
+            or StructureType.Ginnery => StructureCategory.IndustrialProcessor,
 
         StructureType.HouseholdFactory or StructureType.BldgSuppliesFactory
             or StructureType.MetalGoodsFactory or StructureType.FoodPackingPlant

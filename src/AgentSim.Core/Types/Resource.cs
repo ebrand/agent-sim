@@ -20,6 +20,8 @@ public enum RawMaterial
     Sand,
     Coal,
     Petroleum,
+    Livestock,      // M14c: cattle, poultry, etc. from a Ranch
+    RawCotton,      // M14c: unprocessed cotton from a CottonFarm
 }
 
 /// <summary>
@@ -32,10 +34,12 @@ public enum ProcessedGood
     Lumber,
     Steel,
     Grain,
-    Textiles,
+    Textiles,    // deprecated post-M14c — ClothingFactory now uses Cotton; kept in enum for save-compat
     Aggregate,
     Silicate,
     Fuel,
     Plastic,
     Pulp,
+    Meat,        // M14c: from Slaughterhouse processing Livestock
+    Cotton,      // M14c: from Ginnery processing RawCotton
 }

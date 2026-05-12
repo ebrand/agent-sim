@@ -44,6 +44,7 @@ public static class Industry
         {
             StructureType.Quarry,
             StructureType.AggregatePlant,
+            StructureType.ChalkPlant,         // M14d
         },
         IndustryType.Glass => new[]
         {

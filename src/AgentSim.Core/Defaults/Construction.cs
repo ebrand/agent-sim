@@ -58,6 +58,9 @@ public static class Construction
     public const int Slaughterhouse = 250_000;  // livestock processor
     public const int Ginnery = 250_000;         // cotton processor
 
+    // M14d additions (Stone diversification)
+    public const int ChalkPlant = 250_000;      // rock → chalk processor
+
     /// <summary>
     /// Construction multiplier (× monthly upkeep) for treasury-funded structures. Lets each
     /// structure type set its own capital-to-operating ratio. Returns 0 for non-treasury-funded.
@@ -131,6 +134,8 @@ public static class Construction
             StructureType.CottonFarm => CottonFarm,
             StructureType.Slaughterhouse => Slaughterhouse,
             StructureType.Ginnery => Ginnery,
+            // M14d (Stone diversification)
+            StructureType.ChalkPlant => ChalkPlant,
             _ => 0,
         };
     }

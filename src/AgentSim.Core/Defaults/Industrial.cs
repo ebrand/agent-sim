@@ -63,6 +63,7 @@ public static class Industrial
         StructureType.PlasticPlant => (RawMaterial.Petroleum, ProcessedGood.Plastic),
         StructureType.Slaughterhouse => (RawMaterial.Livestock, ProcessedGood.Meat),     // M14c
         StructureType.Ginnery => (RawMaterial.RawCotton, ProcessedGood.Cotton),           // M14c
+        StructureType.ChalkPlant => (RawMaterial.Rock, ProcessedGood.Chalk),              // M14d
         _ => null,
     };
 
@@ -106,7 +107,8 @@ public static class Industrial
             }, ManufacturedGood.Clothing),
         StructureType.ConcretePlant => (
             new (ProcessedGood, int)[] {
-                (ProcessedGood.Aggregate, 5),
+                (ProcessedGood.Aggregate, 4),
+                (ProcessedGood.Chalk, 1),       // M14d: cement needs lime/chalk
             }, ManufacturedGood.Concrete),
         StructureType.PaperMill => (
             new (ProcessedGood, int)[] {
@@ -145,6 +147,7 @@ public static class Industrial
         ProcessedGood.Pulp => 3,       // M14b
         ProcessedGood.Meat => 7,       // M14c
         ProcessedGood.Cotton => 4,     // M14c
+        ProcessedGood.Chalk => 5,      // M14d
         _ => throw new ArgumentOutOfRangeException(nameof(good)),
     };
 
@@ -189,6 +192,7 @@ public static class Industrial
         StructureType.PlasticPlant => 400_000,      // M14b
         StructureType.Slaughterhouse => 200_000,    // M14c
         StructureType.Ginnery => 200_000,           // M14c
+        StructureType.ChalkPlant => 200_000,        // M14d
         // Manufacturers
         StructureType.HouseholdFactory => 300_000,
         StructureType.BldgSuppliesFactory => 300_000,
@@ -229,6 +233,7 @@ public static class Industrial
         StructureType.PlasticPlant => 5_000,        // M14b
         StructureType.Slaughterhouse => 3_000,      // M14c
         StructureType.Ginnery => 3_000,             // M14c
+        StructureType.ChalkPlant => 3_000,          // M14d
         // Manufacturers
         StructureType.HouseholdFactory => 4_000,
         StructureType.BldgSuppliesFactory => 4_000,

@@ -39,6 +39,7 @@ public enum StructureType
     PlasticPlant,      // M14b: Petroleum → Plastic
     Slaughterhouse,    // M14c: Livestock → Meat
     Ginnery,           // M14c: RawCotton → Cotton
+    ChalkPlant,        // M14d: Rock → Chalk
 
     // Industrial — manufacturers
     HouseholdFactory,
@@ -112,7 +113,7 @@ public static class StructureTypeExtensions
             or StructureType.AggregatePlant or StructureType.SilicatePlant
             or StructureType.FuelRefinery or StructureType.PulpMill
             or StructureType.PlasticPlant or StructureType.Slaughterhouse
-            or StructureType.Ginnery => StructureCategory.IndustrialProcessor,
+            or StructureType.Ginnery or StructureType.ChalkPlant => StructureCategory.IndustrialProcessor,
 
         StructureType.HouseholdFactory or StructureType.BldgSuppliesFactory
             or StructureType.MetalGoodsFactory or StructureType.FoodPackingPlant

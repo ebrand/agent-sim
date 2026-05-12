@@ -42,4 +42,5 @@ public enum ProcessedGood
     Pulp,
     Meat,        // M14c: from Slaughterhouse processing Livestock
     Cotton,      // M14c: from Ginnery processing RawCotton
+    Chalk,       // M14d: from ChalkPlant processing Rock — input to ConcretePlant for cement
 }

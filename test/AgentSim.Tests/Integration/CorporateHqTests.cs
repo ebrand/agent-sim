@@ -27,14 +27,12 @@ public class CorporateHqTests
     {
         var (sim, hq) = NewSimWithHq(IndustryType.Forestry);
 
-        // Forestry chain: ForestExtractor + Sawmill + BldgSuppliesFactory + Storage
-        // = $150k + $250k + $400k + $150k = $950k. 2× = $1.9M.
+        // M14: Forestry chain = ForestExtractor + Sawmill only (manufacturer is standalone now).
+        // = $150k + $250k = $400k. 2× = $800k.
         var expected = 2 * (Construction.Cost(StructureType.ForestExtractor)
-            + Construction.Cost(StructureType.Sawmill)
-            + Construction.Cost(StructureType.BldgSuppliesFactory)
-            + Construction.Cost(StructureType.Storage));
+            + Construction.Cost(StructureType.Sawmill));
         Assert.Equal(expected, hq.CashBalance);
-        Assert.Equal(1_900_000, hq.CashBalance);  // sanity check the actual figure
+        Assert.Equal(800_000, hq.CashBalance);
     }
 
     [Fact]
@@ -85,16 +83,32 @@ public class CorporateHqTests
     }
 
     [Fact]
-    public void PlaceIndustrial_HouseholdFactory_AllowedAnywhere()
+    public void PlaceIndustrial_RejectsManufacturerType()
     {
-        // HouseholdFactory is intentionally cross-industry per design.
+        // M14: HQs own only extractor + processor. Manufacturers are placed standalone via
+        // PlaceManufacturer.
         var (sim, fhq) = NewSimWithHq(IndustryType.Forestry);
-        var (sim2, mhq) = NewSimWithHq(IndustryType.Mining);
 
-        // Should not throw under either industry.
-        sim.PlaceIndustrialStructure(StructureType.HouseholdFactory, fhq.Id);
-        sim2.PlaceIndustrialStructure(StructureType.HouseholdFactory, mhq.Id);
+        Assert.Throws<ArgumentException>(() =>
+            sim.PlaceIndustrialStructure(StructureType.HouseholdFactory, fhq.Id));
+        Assert.Throws<ArgumentException>(() =>
+            sim.PlaceIndustrialStructure(StructureType.BldgSuppliesFactory, fhq.Id));
     }
+
+    [Fact]
+    public void PlaceManufacturer_IsStandalone_Treasury_funded()
+    {
+        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 5_000_000 });
+        var treasuryBefore = sim.State.City.TreasuryBalance;
+
+        var mfg = sim.PlaceManufacturer(StructureType.HouseholdFactory);
+
+        Assert.Equal(treasuryBefore - Construction.Cost(StructureType.HouseholdFactory),
+            sim.State.City.TreasuryBalance);
+        Assert.Null(mfg.OwnerHqId);
+        Assert.Equal(StructureType.HouseholdFactory, mfg.Type);
+    }
+
 
     [Fact]
     public void PlaceIndustrial_RejectsWhenHqCashInsufficient()

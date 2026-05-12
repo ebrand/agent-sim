@@ -15,6 +15,13 @@ public sealed class Region
     /// residential zone is created.
     /// </summary>
     public Dictionary<ManufacturedGood, int> GoodsReservoir { get; } = new();
+
+    /// <summary>
+    /// Regional reservoir of processed goods (M14): processors overflow their buffers to the region
+    /// when no local manufacturer is buying. Standalone manufacturers can pull from here as a
+    /// fallback before resorting to imports.
+    /// </summary>
+    public Dictionary<ProcessedGood, int> ProcessedGoodsReservoir { get; } = new();
 }
 
 /// <summary>

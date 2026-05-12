@@ -1,0 +1,51 @@
+Expanded resource → processed → mfg table:
+
+  ┌──────────────────┬─────────────────┬────────────────┬───────────────────────┐
+  │ Natural resource │    Extractor    │  Processor(s)  │    Processed goods    │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │ Forest           │ ForestExtractor │ Sawmill        │ Wood                  │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │                  │                 │ PulpMill       │ Pulp                  │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │ Ore              │ Mine            │ Smelter        │ Metal                 │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │ Arable land      │ Farm            │ GrainMill      │ Flour (from Crops)    │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │                  │ Ranch           │ Slaughterhouse │ Meat (from Livestock) │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │                  │ CottonFarm      │ Ginnery        │ Cotton                │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │ Stone            │ Quarry          │ StoneCutter    │ Rock                  │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │                  │                 │ AggregatePlant │ Aggregate             │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │                  │                 │ ChalkPlant     │ Chalk                 │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │ Sand             │ SandPit         │ SilicatePlant  │ Glass                 │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │ Coal             │ CoalMine        │ CoalRefinery   │ Coke                  │
+  ├──────────────────┼─────────────────┼────────────────┼───────────────────────┤
+  │ Petroleum        │ OilWell         │ Refinery       │ Fuel, Plastic         │
+  └──────────────────┴─────────────────┴────────────────┴───────────────────────┘
+
+  So each industry can have multiple processor types under one HQ (Forestry HQ funds both Sawmill AND PulpMill if the player wants both Wood and Pulp output). That's an organic extension of M12's "HQ owns its vertical."
+
+  Manufacturer recipes (suggested):
+
+  ┌─────────────────────┬──────────────────────────────────────────────────┬────────────────────┐
+  │    Manufacturer     │ Inputs (processed goods from various industries) │     Output         │
+  ├─────────────────────┼──────────────────────────────────────────────────┼────────────────────┤
+  │ BldgSuppliesFactory │ Wood + Metal + Plastic                           │ BldgSupplies       │
+  ├─────────────────────┼──────────────────────────────────────────────────┼────────────────────┤
+  │ HouseholdFactory    │ Wood + Metal + Glass + Plastic                   │ Household          │
+  ├─────────────────────┼──────────────────────────────────────────────────┼────────────────────┤
+  │ FoodPackingPlant    │ Flour + Meat + Plastic + Glass                   │ Food               │
+  ├─────────────────────┼──────────────────────────────────────────────────┼────────────────────┤
+  │ ClothingFactory     │ Cotton + Plastic (synthetic fibers)              │ Clothing           │
+  ├─────────────────────┼──────────────────────────────────────────────────┼────────────────────┤
+  │ ConcretePlant       │ Aggregate + Chalk                                │ Concrete           │
+  ├─────────────────────┼──────────────────────────────────────────────────┼────────────────────┤
+  │ PaperMill (new)     │ Pulp                                             │ Paper              │
+  ├─────────────────────┼──────────────────────────────────────────────────┼────────────────────┤
+  │ MetalGoodsFactory   │ Metal + Plastic                                  │ MetalGoods         │
+  └─────────────────────┴──────────────────────────────────────────────────┴────────────────────┘

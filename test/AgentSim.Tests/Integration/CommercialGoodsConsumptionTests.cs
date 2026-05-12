@@ -32,11 +32,18 @@ public class CommercialGoodsConsumptionTests
         return hq.Id;
     }
 
-    /// <summary>Place an industrial structure with full staffing and pre-seeded goods.</summary>
-    private static Structure SeedStorageWithGoods(Sim sim, int foodUnits = 0, int clothingUnits = 0, int householdUnits = 0)
+    /// <summary>
+    /// Seed a standalone manufacturer with pre-stocked manufactured goods. M14: commercial pulls
+    /// from manufacturers directly (no Storage layer). Tests using "storage" via this helper
+    /// actually exercise the manufacturer-as-seller flow now.
+    /// </summary>
+    private static Structure SeedManufacturerWithGoods(Sim sim, int foodUnits = 0, int clothingUnits = 0, int householdUnits = 0)
     {
-        var hqId = EnsureHq(sim);
-        var s = sim.PlaceIndustrialStructure(StructureType.Storage, hqId);
+        // Pick any manufacturer type that has the InternalStorageCapacity field — HouseholdFactory
+        // works. Treasury needs to cover construction.
+        if (sim.State.City.TreasuryBalance < 2_000_000)
+            sim.State.City.TreasuryBalance += 2_000_000;
+        var s = sim.PlaceManufacturer(StructureType.HouseholdFactory);
         s.ConstructionTicks = s.RequiredConstructionTicks;
         s.CashBalance = 100_000;
         foreach (var (tier, count) in s.JobSlots)
@@ -48,6 +55,10 @@ public class CommercialGoodsConsumptionTests
         if (householdUnits > 0) s.ManufacturedStorage[ManufacturedGood.Household] = householdUnits;
         return s;
     }
+
+    /// <summary>Legacy name kept for tests that still reference SeedStorageWithGoods.</summary>
+    private static Structure SeedStorageWithGoods(Sim sim, int foodUnits = 0, int clothingUnits = 0, int householdUnits = 0)
+        => SeedManufacturerWithGoods(sim, foodUnits, clothingUnits, householdUnits);
 
     [Fact]
     public void Commercial_PullsGoodsFromLocalStorage_WhenAvailable()
@@ -70,23 +81,21 @@ public class CommercialGoodsConsumptionTests
     }
 
     [Fact]
-    public void Commercial_PaysStorage_WhenPullingGoods()
+    public void Commercial_PaysManufacturer_WhenPullingGoods()
     {
-        // M12: storage's positive profit gets swept up to its owning HQ at end-of-month, so
-        // storage.CashBalance ends up close to its seeded value. Check the HQ's cash to see
-        // that the storage sale revenue made it through (revenue - costs - corporate tax).
+        // M14: commercial buys directly from standalone manufacturers. Revenue accrues to the
+        // manufacturer's own CashBalance.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var commZone = sim.CreateCommercialZone();
-        var shop = PlaceOperationalShop(sim, commZone.Id);
-        var storage = SeedStorageWithGoods(sim, foodUnits: 10_000, clothingUnits: 10_000, householdUnits: 5_000);
+        PlaceOperationalShop(sim, commZone.Id);
+        var mfg = SeedStorageWithGoods(sim, foodUnits: 10_000, clothingUnits: 10_000, householdUnits: 5_000);
 
-        var hq = sim.State.City.Structures[storage.OwnerHqId!.Value];
-        var hqCashBefore = hq.CashBalance;
+        var mfgCashBefore = mfg.CashBalance;
         sim.Tick(30);
 
-        Assert.True(hq.CashBalance > hqCashBefore,
-            $"HQ should receive swept profit from storage sales. Before: {hqCashBefore}, After: {hq.CashBalance}");
+        Assert.True(mfg.CashBalance > mfgCashBefore,
+            $"Manufacturer should gain cash from commercial sales. Before: {mfgCashBefore}, After: {mfg.CashBalance}");
     }
 
     [Fact]
@@ -151,22 +160,19 @@ public class CommercialGoodsConsumptionTests
     }
 
     [Fact]
-    public void HqReceivesRevenue_FromCommercialSales()
+    public void ManufacturerReceivesRevenue_FromCommercialSales()
     {
-        // M13: storage sales route revenue to its owning HQ, not the storage itself.
+        // M14: commercial pulls from manufacturers; revenue accrues to manufacturer (standalone).
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var commZone = sim.CreateCommercialZone();
         PlaceOperationalShop(sim, commZone.Id);
-        var storage = SeedStorageWithGoods(sim, foodUnits: 10_000);
-        var hq = sim.State.City.Structures[storage.OwnerHqId!.Value];
+        var mfg = SeedStorageWithGoods(sim, foodUnits: 10_000);
 
-        sim.Tick(15);  // mid-month
+        sim.Tick(15);  // mid-month, before any monthly reset
 
-        Assert.True(hq.MonthlyRevenue > 0,
-            $"HQ should have received revenue from commercial purchases. Got {hq.MonthlyRevenue}.");
-        // Storage itself is a cost center under M13 — its own revenue stays at 0.
-        Assert.Equal(0, storage.MonthlyRevenue);
+        Assert.True(mfg.MonthlyRevenue > 0,
+            $"Manufacturer should have received revenue from commercial purchases. Got {mfg.MonthlyRevenue}.");
     }
 
     [Fact]
@@ -186,8 +192,8 @@ public class CommercialGoodsConsumptionTests
         var sim1 = BuildSim();
         var sim2 = BuildSim();
 
-        var storage1 = sim1.State.City.Structures.Values.First(s => s.Type == StructureType.Storage);
-        var storage2 = sim2.State.City.Structures.Values.First(s => s.Type == StructureType.Storage);
+        var storage1 = sim1.State.City.Structures.Values.First(s => s.Type == StructureType.HouseholdFactory);
+        var storage2 = sim2.State.City.Structures.Values.First(s => s.Type == StructureType.HouseholdFactory);
 
         Assert.Equal(storage1.CashBalance, storage2.CashBalance);
         Assert.Equal(

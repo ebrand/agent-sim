@@ -101,10 +101,17 @@ public sealed class Sim
     /// treasury) — per M12 design: each industrial chain is owned and funded by a parent commercial
     /// venture. The structure begins 7-tick construction and is operational once it completes.
     /// </summary>
+    /// <summary>
+    /// Place an extractor or processor under a CorporateHq's ownership. M14: HQs own only the
+    /// extractor + processor stages. Manufacturers are placed independently via PlaceManufacturer.
+    /// </summary>
     public Structure PlaceIndustrialStructure(StructureType type, long ownerHqId)
     {
         if (!Industrial.IsIndustrial(type))
             throw new ArgumentException($"{type} is not an industrial structure type", nameof(type));
+        if (!Industrial.IsExtractor(type) && !Industrial.IsProcessor(type))
+            throw new ArgumentException(
+                $"{type} is not an extractor or processor — manufacturers are placed via PlaceManufacturer", nameof(type));
 
         if (!State.City.Structures.TryGetValue(ownerHqId, out var hq))
             throw new ArgumentException($"HQ {ownerHqId} not found", nameof(ownerHqId));
@@ -119,10 +126,6 @@ public sealed class Sim
         // Charge construction cost to the HQ, not the city treasury.
         ChargeHqConstructionCost(hq, type);
 
-        var capacity = Industrial.IsStorage(type)
-            ? Industrial.FinalStorageCapacity
-            : Industrial.InternalStorageCapacity;
-
         var structure = new Structure
         {
             Id = State.AllocateStructureId(),
@@ -132,11 +135,40 @@ public sealed class Sim
             ConstructionTicks = 0,
             RequiredConstructionTicks = 7,
             JobSlots = Industrial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
-            InternalStorageCapacity = capacity,
+            InternalStorageCapacity = Industrial.InternalStorageCapacity,
             OwnerHqId = ownerHqId,
         };
         State.City.Structures[structure.Id] = structure;
         hq.OwnedStructureIds.Add(structure.Id);
+        return structure;
+    }
+
+    /// <summary>
+    /// Place a standalone manufacturer. M14: manufacturers are independent industrial businesses
+    /// that buy processed goods from any HQ's processor and sell manufactured goods to commercial
+    /// (or to the region as overflow). They have their own P&L: city treasury pays for construction;
+    /// the manufacturer's own CashBalance covers ongoing operations.
+    /// </summary>
+    public Structure PlaceManufacturer(StructureType type)
+    {
+        if (!Industrial.IsManufacturer(type))
+            throw new ArgumentException($"{type} is not a manufacturer type", nameof(type));
+
+        ChargeConstructionCost(type);
+
+        var structure = new Structure
+        {
+            Id = State.AllocateStructureId(),
+            Type = type,
+            ZoneId = 0,
+            ResidentialCapacity = 0,
+            ConstructionTicks = 0,
+            RequiredConstructionTicks = 7,
+            JobSlots = Industrial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
+            InternalStorageCapacity = Industrial.InternalStorageCapacity,
+            // No OwnerHqId — manufacturer is standalone.
+        };
+        State.City.Structures[structure.Id] = structure;
         return structure;
     }
 

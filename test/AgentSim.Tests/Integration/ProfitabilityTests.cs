@@ -37,8 +37,18 @@ public class ProfitabilityTests
     /// <summary>Helper to place an operational industrial structure with full staffing.</summary>
     private static Structure PlaceFullyStaffed(Sim sim, StructureType type, int seedCash = 100_000)
     {
-        var hqId = EnsureHqForType(sim, type);
-        var s = sim.PlaceIndustrialStructure(type, hqId);
+        Structure s;
+        if (Industrial.IsManufacturer(type))
+        {
+            if (sim.State.City.TreasuryBalance < 2_000_000)
+                sim.State.City.TreasuryBalance += 2_000_000;
+            s = sim.PlaceManufacturer(type);
+        }
+        else
+        {
+            var hqId = EnsureHqForType(sim, type);
+            s = sim.PlaceIndustrialStructure(type, hqId);
+        }
         s.ConstructionTicks = s.RequiredConstructionTicks;
         s.CashBalance = seedCash;
         foreach (var (tier, count) in s.JobSlots)
@@ -49,23 +59,18 @@ public class ProfitabilityTests
     }
 
     [Fact]
-    public void ProfitableStructure_NoWarning_StaysOperational()
+    public void Manufacturer_IsProfitabilityTracked()
     {
-        // 2-manufacturer storage scenario from M4 — storage is profitable, should never go inactive
+        // M14: standalone manufacturers (no HQ-owner) ARE tracked by the profitability mechanic,
+        // unlike HQ-owned subs which are exempt.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
-        PlaceFullyStaffed(sim, StructureType.ForestExtractor);
-        PlaceFullyStaffed(sim, StructureType.Sawmill);
-        PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
-        PlaceFullyStaffed(sim, StructureType.SandPit);
-        PlaceFullyStaffed(sim, StructureType.SilicatePlant);
-        PlaceFullyStaffed(sim, StructureType.GlassWorks);
-        var storage = PlaceFullyStaffed(sim, StructureType.Storage);
+        var mfg = PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
 
-        sim.Tick(60);  // 2 months — profitable storage stays operational
-
-        Assert.False(storage.Inactive, "Profitable storage should remain operational");
-        Assert.False(storage.UnprofitableWarning, "Profitable storage should have no warning");
+        // Without input chain, manufacturer has no revenue, only expenses → unprofitable.
+        sim.Tick(30);
+        Assert.True(mfg.UnprofitableWarning,
+            "Manufacturer with no inputs should be flagged unprofitable after 1 month.");
     }
 
     /// <summary>
@@ -155,7 +160,7 @@ public class ProfitabilityTests
         PlaceFullyStaffed(sim, StructureType.ForestExtractor);
         PlaceFullyStaffed(sim, StructureType.Sawmill);
         PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
-        var storage = PlaceFullyStaffed(sim, StructureType.Storage);
+        var storage = PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
 
         sim.Tick(60);  // storage goes inactive at end of month 2
 
@@ -197,7 +202,7 @@ public class ProfitabilityTests
         PlaceFullyStaffed(sim, StructureType.ForestExtractor);
         PlaceFullyStaffed(sim, StructureType.Sawmill);
         PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
-        var storage = PlaceFullyStaffed(sim, StructureType.Storage);
+        var storage = PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
 
         sim.Tick(60);  // inactivate
 
@@ -280,7 +285,7 @@ public class ProfitabilityTests
             PlaceFullyStaffed(sim, StructureType.ForestExtractor);
             PlaceFullyStaffed(sim, StructureType.Sawmill);
             PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
-            PlaceFullyStaffed(sim, StructureType.Storage);
+            PlaceFullyStaffed(sim, StructureType.HouseholdFactory);
             sim.Tick(60);
             return sim;
         }
@@ -288,8 +293,8 @@ public class ProfitabilityTests
         var sim1 = BuildSim();
         var sim2 = BuildSim();
 
-        var storage1 = sim1.State.City.Structures.Values.First(s => s.Type == StructureType.Storage);
-        var storage2 = sim2.State.City.Structures.Values.First(s => s.Type == StructureType.Storage);
+        var storage1 = sim1.State.City.Structures.Values.First(s => s.Type == StructureType.HouseholdFactory);
+        var storage2 = sim2.State.City.Structures.Values.First(s => s.Type == StructureType.HouseholdFactory);
 
         Assert.Equal(storage1.Inactive, storage2.Inactive);
         Assert.Equal(storage1.UnprofitableWarning, storage2.UnprofitableWarning);

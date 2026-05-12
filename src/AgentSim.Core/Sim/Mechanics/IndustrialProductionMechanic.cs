@@ -4,33 +4,32 @@ using AgentSim.Core.Types;
 namespace AgentSim.Core.Sim.Mechanics;
 
 /// <summary>
-/// Industrial production runs each tick. Walks the chain backwards (downstream pulls from
-/// upstream), producing output and transferring money along the way:
+/// Industrial production runs each tick. Walks the chain backwards (downstream pulls from upstream):
 ///
 ///   manufacturer ← processor ← extractor
-///   storage ← manufacturer
 ///
 /// Each structure's daily output = MaxOutputPerDay × (jobs_filled / total_slots), limited by:
-///   - Input availability (for processors/manufacturers)
+///   - Input availability
 ///   - Output buffer space (internal storage capacity)
 ///
-/// Money flows accompany goods movement:
-///   - Processor pays extractor at raw material price
-///   - Manufacturer pays processor at processed good price
-///   - Storage pays manufacturer at 80% of manufactured good price (20% storage margin)
-///   - Storage sells overflow to regional treasury at full manufactured price (regional treasury is functionally infinite)
+/// M13 consolidated HQ chain (extractor + processor under one HQ): no cash flow between same-HQ
+/// subs; goods xfer only. Revenue routes to the HQ via CreditRevenueToHqOrSelf.
+///
+/// M14: Manufacturer is a standalone industrial entity (not HQ-owned). When a Mfg pulls processed
+/// goods from a processor, it pays the processor's HQ at the processed-good price — real cash
+/// transaction between two independent economic entities. Storage has been removed; manufacturers
+/// sell directly to commercial (via CostOfLivingMechanic) or to the region as overflow.
 /// </summary>
 public static class IndustrialProductionMechanic
 {
-    /// <summary>Runs each tick. Order: storage pull from manufacturer, manufacturer pull from processor, processor pull from extractor, extractor produces.</summary>
+    /// <summary>Runs each tick. Order matters: pull downstream first.</summary>
     public static void RunDaily(SimState state)
     {
-        // Process downstream first (pull-based).
-        StorageDrawFromManufacturers(state);
         ManufacturerProduce(state);
         ProcessorProduce(state);
         ExtractorProduce(state);
-        StorageSellOverflowToRegion(state);
+        ProcessorSellOverflowToRegion(state);
+        ManufacturerSellOverflowToRegion(state);
     }
 
     // === Extractor: produce raw material into own buffer ===
@@ -120,62 +119,60 @@ public static class IndustrialProductionMechanic
         }
     }
 
-    // === Storage: pull manufactured goods from manufacturers (pays 80% of mfg price) ===
-    private static void StorageDrawFromManufacturers(SimState state)
+    // === Processor sells overflow to regional treasury at full processed price ===
+    // M14: if processors fill up their buffers (no manufacturer pulls), they sell direct to the
+    // region. Revenue routes to the processor's owning HQ.
+    private static void ProcessorSellOverflowToRegion(SimState state)
     {
-        var storages = state.City.Structures.Values
-            .Where(s => Industrial.IsStorage(s.Type) && s.Type == StructureType.Storage
-                        && s.Operational && !s.Inactive)
-            .ToList();
-        if (storages.Count == 0) return;
-
-        // M13: same-HQ goods transfer — no cash exchange. Goods just move from manufacturer to
-        // storage (both owned by the same parent company; the transfer is bookkeeping).
-        foreach (var storage in storages)
+        foreach (var processor in state.City.Structures.Values)
         {
-            foreach (var manufacturer in state.City.Structures.Values
-                         .Where(s => Industrial.IsManufacturer(s.Type)
-                                     && s.Operational && !s.Inactive))
+            if (!Industrial.IsProcessor(processor.Type)) continue;
+            if (!processor.Operational || processor.Inactive) continue;
+
+            var keysSnapshot = processor.ProcessedStorage.Keys.ToList();
+            foreach (var good in keysSnapshot)
             {
-                var keysSnapshot = manufacturer.ManufacturedStorage.Keys.ToList();
-                foreach (var good in keysSnapshot)
-                {
-                    var available = manufacturer.ManufacturedStorage[good];
-                    if (available <= 0) continue;
+                var qty = processor.ProcessedStorage[good];
+                if (qty <= 0) continue;
 
-                    var stored = storage.ManufacturedStorage.GetValueOrDefault(good);
-                    var canAccept = Math.Max(0, storage.InternalStorageCapacity - stored);
-                    var qty = Math.Min(available, canAccept);
-                    if (qty <= 0) continue;
+                // Only spill to region when the buffer is nearly full — otherwise let manufacturers
+                // have first crack via the daily ManufacturerProduce pull.
+                if (qty < processor.InternalStorageCapacity) continue;
 
-                    manufacturer.ManufacturedStorage[good] = available - qty;
-                    storage.ManufacturedStorage[good] = stored + qty;
-                }
+                var unitPrice = Industrial.ProcessedGoodPrice(good);
+                var sellPrice = unitPrice * qty;
+
+                CreditRevenueToHqOrSelf(state, processor, sellPrice);
+                processor.ProcessedStorage[good] = 0;
+                state.Region.ProcessedGoodsReservoir.TryGetValue(good, out var existing);
+                state.Region.ProcessedGoodsReservoir[good] = existing + qty;
             }
         }
     }
 
-    // === Storage sells overflow to regional treasury at full price ===
-    // M13: revenue accrues to the owning HQ, not the storage itself.
-    private static void StorageSellOverflowToRegion(SimState state)
+    // === Manufacturer sells overflow to regional treasury at full manufactured price ===
+    // M14: manufacturers spill their own buffer to the region when full. Manufacturers are
+    // standalone (no HQ ownership), so revenue accrues to their own CashBalance.
+    private static void ManufacturerSellOverflowToRegion(SimState state)
     {
-        foreach (var storage in state.City.Structures.Values)
+        foreach (var manufacturer in state.City.Structures.Values)
         {
-            if (storage.Type != StructureType.Storage) continue;
-            if (!storage.Operational || storage.Inactive) continue;
+            if (!Industrial.IsManufacturer(manufacturer.Type)) continue;
+            if (!manufacturer.Operational || manufacturer.Inactive) continue;
 
-            var keysSnapshot = storage.ManufacturedStorage.Keys.ToList();
+            var keysSnapshot = manufacturer.ManufacturedStorage.Keys.ToList();
             foreach (var good in keysSnapshot)
             {
-                var qty = storage.ManufacturedStorage[good];
+                var qty = manufacturer.ManufacturedStorage[good];
                 if (qty <= 0) continue;
+                if (qty < manufacturer.InternalStorageCapacity) continue;  // only spill at full
 
                 var unitPrice = Industrial.ManufacturedGoodPrice(good);
                 var sellPrice = unitPrice * qty;
 
-                CreditRevenueToHqOrSelf(state, storage, sellPrice);
-                storage.ManufacturedStorage[good] = 0;
-                // Regional treasury is functionally infinite — goods accumulate, no balance tracked.
+                manufacturer.CashBalance += sellPrice;
+                manufacturer.MonthlyRevenue += sellPrice;
+                manufacturer.ManufacturedStorage[good] = 0;
                 state.Region.GoodsReservoir.TryGetValue(good, out var existing);
                 state.Region.GoodsReservoir[good] = existing + qty;
             }
@@ -253,8 +250,9 @@ public static class IndustrialProductionMechanic
     }
 
     /// <summary>
-    /// Pull up to `unitsRequested` processed-good units from any processor's buffer. M13: goods
-    /// only — no cash transfer between same-HQ industrial structures.
+    /// Pull processed-good units from any processor's buffer. M14: a standalone Manufacturer pays
+    /// the processor's owning HQ at unitPrice per unit — a real inter-entity cash transaction.
+    /// (For legacy orphan/non-HQ processors, money still flows to the processor itself.)
     /// </summary>
     private static int PullProcessedGood(SimState state, Structure buyer, ProcessedGood good, int unitsRequested, int unitPrice)
     {
@@ -269,6 +267,16 @@ public static class IndustrialProductionMechanic
             if (available <= 0) continue;
 
             var qty = Math.Min(available, unitsRequested - unitsPulled);
+            var total = qty * unitPrice;
+
+            // Money: buyer (manufacturer) pays the processor's HQ. Buyer is standalone — its own
+            // CashBalance is decremented. Processor's HQ collects revenue.
+            buyer.CashBalance -= total;
+            buyer.MonthlyExpenses += total;
+            CreditRevenueToHqOrSelf(state, processor, total);
+
+            // Goods: processor ships to buyer's input pool (no buffer on buyer side for inputs;
+            // the production caller used the pulled units immediately).
             processor.ProcessedStorage[good] = available - qty;
             unitsPulled += qty;
         }

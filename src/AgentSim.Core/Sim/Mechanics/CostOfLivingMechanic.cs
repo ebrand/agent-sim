@@ -96,19 +96,22 @@ public static class CostOfLivingMechanic
         var actualCost = 0;
         var unitsRemaining = unitsDemanded;
 
-        // 1. Try local storage. M13: revenue routes to the storage's owning HQ if it has one.
-        foreach (var storage in state.City.Structures.Values
-                     .Where(s => s.Type == StructureType.Storage
+        // 1. Try local manufacturers. M14: commercial buys directly from standalone manufacturers
+        // (no Storage layer anymore). Revenue accrues to the manufacturer's own CashBalance since
+        // manufacturers are standalone industrial entities.
+        foreach (var manufacturer in state.City.Structures.Values
+                     .Where(s => Industrial.IsManufacturer(s.Type)
                                  && s.Operational && !s.Inactive))
         {
             if (unitsRemaining <= 0) break;
-            var available = storage.ManufacturedStorage.GetValueOrDefault(good);
+            var available = manufacturer.ManufacturedStorage.GetValueOrDefault(good);
             var pull = Math.Min(available, unitsRemaining);
             if (pull <= 0) continue;
 
             var cost = pull * unitPrice;
-            storage.ManufacturedStorage[good] = available - pull;
-            IndustrialProductionMechanic.CreditRevenueToHqOrSelf(state, storage, cost);
+            manufacturer.ManufacturedStorage[good] = available - pull;
+            manufacturer.CashBalance += cost;
+            manufacturer.MonthlyRevenue += cost;
             actualCost += cost;
             unitsRemaining -= pull;
         }

@@ -48,8 +48,19 @@ public class IndustrialTests
     /// </summary>
     private static Structure PlaceAndOperationalize(Sim sim, StructureType type, int seedCash = 100_000)
     {
-        var hqId = EnsureHqForType(sim, type);
-        var s = sim.PlaceIndustrialStructure(type, hqId);
+        Structure s;
+        if (Industrial.IsManufacturer(type))
+        {
+            // M14: manufacturers are standalone (no HQ). Bump treasury to cover construction.
+            if (sim.State.City.TreasuryBalance < 2_000_000)
+                sim.State.City.TreasuryBalance += 2_000_000;
+            s = sim.PlaceManufacturer(type);
+        }
+        else
+        {
+            var hqId = EnsureHqForType(sim, type);
+            s = sim.PlaceIndustrialStructure(type, hqId);
+        }
         s.ConstructionTicks = s.RequiredConstructionTicks;
         s.CashBalance = seedCash;
 
@@ -133,29 +144,21 @@ public class IndustrialTests
     }
 
     [Fact]
-    public void Storage_ReceivesGoodsFromManufacturer()
+    public void Manufacturer_AccumulatesOutputInOwnBuffer()
     {
+        // M14: with no storage layer, manufacturer holds its output in its own ManufacturedStorage.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
 
         PlaceAndOperationalize(sim, StructureType.ForestExtractor);
         PlaceAndOperationalize(sim, StructureType.Sawmill);
         var factory = PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
-        var storage = PlaceAndOperationalize(sim, StructureType.Storage);
 
-        // Tick to mid-month so we observe goods flow while structures are still operational
-        // (single-manufacturer storage is unprofitable; without this constraint it would go inactive after 2 months)
-        sim.Tick(20);
+        sim.Tick(30);  // one month of production
 
-        // Verify the flow: manufacturer produces, storage absorbs, storage sells to regional treasury
-        var regionHousehold = sim.State.Region.GoodsReservoir.GetValueOrDefault(ManufacturedGood.Household);
-        Assert.True(regionHousehold > 0,
-            $"Region should have received household goods from storage sales. Got {regionHousehold}.");
-
-        // Manufacturer's internal storage should not be saturated (storage was absorbing throughout)
-        var factoryHouseholdHoldings = factory.ManufacturedStorage.GetValueOrDefault(ManufacturedGood.Household);
-        Assert.True(factoryHouseholdHoldings < 1000,
-            $"Manufacturer's internal storage should not be full (storage absorbing). Got {factoryHouseholdHoldings}.");
+        var factoryHousehold = factory.ManufacturedStorage.GetValueOrDefault(ManufacturedGood.Household);
+        Assert.True(factoryHousehold > 0,
+            $"Manufacturer should have accumulated household goods in its own buffer. Got {factoryHousehold}.");
     }
 
     [Fact]
@@ -196,90 +199,41 @@ public class IndustrialTests
     }
 
     [Fact]
-    public void Storage_SaleRevenueRoutesToHq()
+    public void HqEarns_WhenManufacturerBuysFromProcessor()
     {
-        // M13: storage's sales to regional treasury (or commercial) route revenue to its owning
-        // HQ. Storage's own CashBalance is unchanged by sales.
+        // M14: the manufacturer (standalone) pays the processor's HQ for processed goods.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
-        PlaceAndOperationalize(sim, StructureType.ForestExtractor);
+        var extractor = PlaceAndOperationalize(sim, StructureType.ForestExtractor);
         PlaceAndOperationalize(sim, StructureType.Sawmill);
-        PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
-        var storage = PlaceAndOperationalize(sim, StructureType.Storage);
-        var hq = sim.State.City.Structures[storage.OwnerHqId!.Value];
+        var mfg = PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
+        var hq = sim.State.City.Structures[extractor.OwnerHqId!.Value];
 
-        var storageRevBefore = storage.MonthlyRevenue;
-        sim.Tick(15);  // mid-month
+        sim.Tick(15);  // mid-month, before reset
 
-        // Storage itself accrues no revenue (it's a cost center under M13).
-        Assert.Equal(storageRevBefore, storage.MonthlyRevenue);
-        // HQ records the chain's revenue.
-        Assert.True(hq.MonthlyRevenue > 0, $"HQ should have recorded chain revenue. Got {hq.MonthlyRevenue}.");
-    }
-
-    [Fact]
-    public void RegionalReservoir_AccumulatesManufacturedGoods()
-    {
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-        PlaceAndOperationalize(sim, StructureType.ForestExtractor);
-        PlaceAndOperationalize(sim, StructureType.Sawmill);
-        PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
-        PlaceAndOperationalize(sim, StructureType.Storage);
-
-        sim.Tick(90);  // 3 months — plenty of time for the chain to push household goods through to region
-
-        var regionalHousehold = sim.State.Region.GoodsReservoir.GetValueOrDefault(ManufacturedGood.Household);
-        Assert.True(regionalHousehold > 0,
-            $"Region should have accumulated household goods from storage overflow. Got {regionalHousehold}.");
-    }
-
-    [Fact]
-    public void Storage_ProfitableWithMultipleManufacturers()
-    {
-        // With 2+ manufacturers feeding 1 storage, the cumulative margin covers storage's
-        // monthly costs ($500 utility + $400 property tax = $900/month).
-        //
-        // Setup: timber chain (forest → sawmill → household factory) + sand chain (sand pit → silicate plant → glass works).
-        // Two manufacturers feeding one storage. Both at full staffing.
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-        PlaceAndOperationalize(sim, StructureType.ForestExtractor);
-        PlaceAndOperationalize(sim, StructureType.Sawmill);
-        PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
-        PlaceAndOperationalize(sim, StructureType.SandPit);
-        PlaceAndOperationalize(sim, StructureType.SilicatePlant);
-        PlaceAndOperationalize(sim, StructureType.GlassWorks);
-        var storage = PlaceAndOperationalize(sim, StructureType.Storage);
-
-        // M12 + alpha-1 calibration: industrial chain profit at this scale is too small to overcome
-        // HQ overhead ($7.5k/mo) for the consolidated bottom line. But the original test's intent
-        // was "storage stays operational with multiple manufacturers feeding it" — contrast with
-        // single-manufacturer storage going inactive (see ProfitabilityTests). Verify that.
-        sim.Tick(60);  // 2 months — single-manufacturer storage would have gone inactive by now
-
-        Assert.False(storage.Inactive,
-            "Storage should not go inactive with 2 manufacturers feeding it (vs. single-manufacturer where margin is too thin).");
+        // Mfg's purchases of lumber from sawmill = revenue to the HQ.
+        Assert.True(hq.MonthlyRevenue > 0,
+            $"HQ should record revenue from Mfg lumber purchases. Got {hq.MonthlyRevenue}.");
+        // Mfg has matching expenses.
+        Assert.True(mfg.MonthlyExpenses > 0,
+            $"Mfg should record expense for buying lumber. Got {mfg.MonthlyExpenses}.");
     }
 
     [Fact]
     public void Determinism_FullChain_SameSeedProducesSameOutput()
     {
-        var sim1 = Sim.Create(new SimConfig { Seed = 42 });
-        sim1.CreateResidentialZone();
-        PlaceAndOperationalize(sim1, StructureType.ForestExtractor);
-        PlaceAndOperationalize(sim1, StructureType.Sawmill);
-        PlaceAndOperationalize(sim1, StructureType.HouseholdFactory);
-        PlaceAndOperationalize(sim1, StructureType.Storage);
-        sim1.Tick(90);
+        Sim BuildSim() {
+            var sim = Sim.Create(new SimConfig { Seed = 42 });
+            sim.CreateResidentialZone();
+            PlaceAndOperationalize(sim, StructureType.ForestExtractor);
+            PlaceAndOperationalize(sim, StructureType.Sawmill);
+            PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
+            sim.Tick(360);
+            return sim;
+        }
 
-        var sim2 = Sim.Create(new SimConfig { Seed = 42 });
-        sim2.CreateResidentialZone();
-        PlaceAndOperationalize(sim2, StructureType.ForestExtractor);
-        PlaceAndOperationalize(sim2, StructureType.Sawmill);
-        PlaceAndOperationalize(sim2, StructureType.HouseholdFactory);
-        PlaceAndOperationalize(sim2, StructureType.Storage);
-        sim2.Tick(90);
+        var sim1 = BuildSim();
+        var sim2 = BuildSim();
 
         Assert.Equal(
             sim1.State.Region.GoodsReservoir.GetValueOrDefault(ManufacturedGood.Household),

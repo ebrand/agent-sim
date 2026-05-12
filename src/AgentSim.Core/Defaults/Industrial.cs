@@ -10,7 +10,13 @@ namespace AgentSim.Core.Defaults;
 public static class Industrial
 {
     /// <summary>Maximum daily output per industrial structure at 100% staffing.</summary>
-    public const int MaxOutputPerDay = 10;
+    /// <summary>
+    /// Max units a structure produces per day at 100% staffing. Calibration target (M14b): a
+    /// modest single-Mfg chain (1 extractor + 1 processor + 1 standalone Mfg) should be roughly
+    /// break-even at this scale. Throughput is the dominant lever — overhead per structure is
+    /// largely fixed.
+    /// </summary>
+    public const int MaxOutputPerDay = 25;
 
     /// <summary>Default internal storage capacity for extractor / processor / manufacturer structures.</summary>
     public const int InternalStorageCapacity = 1_000;
@@ -135,14 +141,17 @@ public static class Industrial
 
     public static int ManufacturedGoodPrice(ManufacturedGood good) => good switch
     {
-        ManufacturedGood.Household => 40,
-        ManufacturedGood.BldgSupplies => 72,
-        ManufacturedGood.MetalGoods => 48,
-        ManufacturedGood.Food => 24,
-        ManufacturedGood.Clothing => 8,
-        ManufacturedGood.Concrete => 60,
-        ManufacturedGood.GlassGoods => 80,
-        ManufacturedGood.Paper => 15,  // M14b
+        // M14b calibration: roughly 2× prior values to keep manufacturer margins above overhead
+        // at small chain scale. The exact balance depends on staffing + throughput; tune as
+        // the sim runs and gameplay emerges.
+        ManufacturedGood.Household => 100,    // was 40 — needs Lumber+Steel+Silicate+Plastic
+        ManufacturedGood.BldgSupplies => 120, // was 72 — needs Lumber+Steel+Plastic
+        ManufacturedGood.MetalGoods => 90,    // was 48
+        ManufacturedGood.Food => 50,          // was 24
+        ManufacturedGood.Clothing => 30,      // was 8 — significantly underpriced before
+        ManufacturedGood.Concrete => 80,      // was 60
+        ManufacturedGood.GlassGoods => 80,    // unchanged (GlassWorks dropped; vestigial)
+        ManufacturedGood.Paper => 30,         // was 15
         _ => throw new ArgumentOutOfRangeException(nameof(good)),
     };
 

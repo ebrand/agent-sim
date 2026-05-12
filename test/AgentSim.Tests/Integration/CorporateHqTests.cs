@@ -118,7 +118,7 @@ public class CorporateHqTests
         hq.CashBalance = 1_000;  // not enough to fund anything
 
         Assert.Throws<InvalidOperationException>(() =>
-            sim.PlaceIndustrialStructure(StructureType.CoalMine, hq.Id));
+            sim.PlaceIndustrialStructure(StructureType.OilWell, hq.Id));
     }
 
     [Fact]

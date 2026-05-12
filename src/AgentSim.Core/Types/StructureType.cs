@@ -43,8 +43,8 @@ public enum StructureType
     FoodPackingPlant,
     ClothingFactory,
     ConcretePlant,
-    GlassWorks,
     PaperMill,         // M14b: Pulp → Paper
+    GlassWorks,        // M14b: deprecated — Silicate is now consumed directly by other manufacturers
 
     // Industrial — storage (vestigial after M14; no longer placeable, no role in production)
     Storage,

@@ -36,7 +36,7 @@ public static class Industry
         },
         IndustryType.Oil => new[]
         {
-            StructureType.OilWell,            // M14b: replaces CoalMine in the Oil industry
+            StructureType.OilWell,
             StructureType.FuelRefinery,       // now processes Petroleum → Fuel
             StructureType.PlasticPlant,       // M14b: Petroleum → Plastic
         },

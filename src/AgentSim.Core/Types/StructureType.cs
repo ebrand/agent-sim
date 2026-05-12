@@ -20,7 +20,6 @@ public enum StructureType
     // Industrial — extractors
     ForestExtractor,
     Mine,
-    CoalMine,
     Quarry,
     SandPit,
     Farm,
@@ -105,7 +104,7 @@ public static class StructureTypeExtensions
         StructureType.Shop or StructureType.Marketplace
             or StructureType.CorporateHq => StructureCategory.Commercial,
 
-        StructureType.ForestExtractor or StructureType.Mine or StructureType.CoalMine
+        StructureType.ForestExtractor or StructureType.Mine
             or StructureType.Quarry or StructureType.SandPit or StructureType.Farm
             or StructureType.OilWell or StructureType.Ranch
             or StructureType.CottonFarm => StructureCategory.IndustrialExtractor,

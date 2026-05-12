@@ -26,7 +26,6 @@ public static class Construction
     public const int Marketplace = 300_000;
     public const int ForestExtractor = 150_000;
     public const int Mine = 150_000;
-    public const int CoalMine = 150_000;
     public const int Quarry = 150_000;
     public const int SandPit = 150_000;
     public const int Farm = 150_000;
@@ -108,7 +107,6 @@ public static class Construction
             StructureType.Marketplace => Marketplace,
             StructureType.ForestExtractor => ForestExtractor,
             StructureType.Mine => Mine,
-            StructureType.CoalMine => CoalMine,
             StructureType.Quarry => Quarry,
             StructureType.SandPit => SandPit,
             StructureType.Farm => Farm,

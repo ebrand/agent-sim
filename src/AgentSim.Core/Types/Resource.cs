@@ -18,7 +18,6 @@ public enum RawMaterial
     Crops,
     Rock,
     Sand,
-    Coal,
     Petroleum,
     Livestock,      // M14c: cattle, poultry, etc. from a Ranch
     RawCotton,      // M14c: unprocessed cotton from a CottonFarm

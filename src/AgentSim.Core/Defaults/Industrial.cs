@@ -40,7 +40,6 @@ public static class Industrial
     {
         StructureType.ForestExtractor => RawMaterial.Wood,
         StructureType.Mine => RawMaterial.IronOre,
-        StructureType.CoalMine => RawMaterial.Coal,
         StructureType.Quarry => RawMaterial.Rock,
         StructureType.SandPit => RawMaterial.Sand,
         StructureType.Farm => RawMaterial.Crops,
@@ -139,7 +138,6 @@ public static class Industrial
         RawMaterial.Crops => 1,
         RawMaterial.Rock => 3,
         RawMaterial.Sand => 2,
-        RawMaterial.Coal => 2,
         RawMaterial.Petroleum => 5,    // M14b
         RawMaterial.Livestock => 4,    // M14c
         RawMaterial.RawCotton => 2,    // M14c
@@ -187,7 +185,6 @@ public static class Industrial
         // Extractors
         StructureType.ForestExtractor => 80_000,
         StructureType.Mine => 150_000,
-        StructureType.CoalMine => 150_000,
         StructureType.Quarry => 100_000,
         StructureType.SandPit => 80_000,
         StructureType.Farm => 100_000,
@@ -229,7 +226,6 @@ public static class Industrial
         // Extractors
         StructureType.ForestExtractor => 1_000,
         StructureType.Mine => 1_500,
-        StructureType.CoalMine => 1_500,
         StructureType.Quarry => 1_000,
         StructureType.SandPit => 1_000,
         StructureType.Farm => 1_000,

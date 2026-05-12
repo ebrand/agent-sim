@@ -24,6 +24,7 @@ public enum StructureType
     Quarry,
     SandPit,
     Farm,
+    OilWell,           // M14b: petroleum extraction for the Oil industry
 
     // Industrial — processors
     Sawmill,
@@ -32,6 +33,8 @@ public enum StructureType
     AggregatePlant,
     SilicatePlant,
     FuelRefinery,
+    PulpMill,          // M14b: Wood → Pulp
+    PlasticPlant,      // M14b: Petroleum → Plastic
 
     // Industrial — manufacturers
     HouseholdFactory,
@@ -41,8 +44,9 @@ public enum StructureType
     ClothingFactory,
     ConcretePlant,
     GlassWorks,
+    PaperMill,         // M14b: Pulp → Paper
 
-    // Industrial — storage
+    // Industrial — storage (vestigial after M14; no longer placeable, no role in production)
     Storage,
     FuelStorage,
 
@@ -96,16 +100,18 @@ public static class StructureTypeExtensions
             or StructureType.CorporateHq => StructureCategory.Commercial,
 
         StructureType.ForestExtractor or StructureType.Mine or StructureType.CoalMine
-            or StructureType.Quarry or StructureType.SandPit or StructureType.Farm => StructureCategory.IndustrialExtractor,
+            or StructureType.Quarry or StructureType.SandPit or StructureType.Farm
+            or StructureType.OilWell => StructureCategory.IndustrialExtractor,
 
         StructureType.Sawmill or StructureType.Smelter or StructureType.Mill
             or StructureType.AggregatePlant or StructureType.SilicatePlant
-            or StructureType.FuelRefinery => StructureCategory.IndustrialProcessor,
+            or StructureType.FuelRefinery or StructureType.PulpMill
+            or StructureType.PlasticPlant => StructureCategory.IndustrialProcessor,
 
         StructureType.HouseholdFactory or StructureType.BldgSuppliesFactory
             or StructureType.MetalGoodsFactory or StructureType.FoodPackingPlant
             or StructureType.ClothingFactory or StructureType.ConcretePlant
-            or StructureType.GlassWorks => StructureCategory.IndustrialManufacturer,
+            or StructureType.GlassWorks or StructureType.PaperMill => StructureCategory.IndustrialManufacturer,
 
         StructureType.Storage or StructureType.FuelStorage => StructureCategory.IndustrialStorage,
 

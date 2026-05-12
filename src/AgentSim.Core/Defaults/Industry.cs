@@ -15,12 +15,19 @@ public static class Industry
     /// available HQ chain. Storage has been removed; manufacturers sell directly to commercial
     /// or overflow to the region.
     /// </summary>
+    /// <summary>
+    /// Industries' allowed extractor + processor types. Some industries support multiple
+    /// processors (Forestry can have both Sawmill for Wood and PulpMill for Pulp; Oil supports
+    /// FuelRefinery and PlasticPlant from the same Petroleum input). An HQ can fund any
+    /// subset of these for its industry.
+    /// </summary>
     public static StructureType[] Chain(IndustryType industry) => industry switch
     {
         IndustryType.Forestry => new[]
         {
             StructureType.ForestExtractor,
             StructureType.Sawmill,
+            StructureType.PulpMill,           // M14b
         },
         IndustryType.Mining => new[]
         {
@@ -29,8 +36,9 @@ public static class Industry
         },
         IndustryType.Oil => new[]
         {
-            StructureType.CoalMine,
-            StructureType.FuelRefinery,
+            StructureType.OilWell,            // M14b: replaces CoalMine in the Oil industry
+            StructureType.FuelRefinery,       // now processes Petroleum → Fuel
+            StructureType.PlasticPlant,       // M14b: Petroleum → Plastic
         },
         IndustryType.Stone => new[]
         {

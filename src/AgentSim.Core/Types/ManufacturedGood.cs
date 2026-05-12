@@ -13,4 +13,5 @@ public enum ManufacturedGood
     Clothing,
     Concrete,
     GlassGoods,
+    Paper,
 }

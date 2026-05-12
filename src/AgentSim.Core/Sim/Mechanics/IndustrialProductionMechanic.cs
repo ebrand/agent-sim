@@ -95,28 +95,53 @@ public static class IndustrialProductionMechanic
             if (!structure.Operational || structure.Inactive) continue;
             var recipe = Industrial.ManufacturerRecipe(structure.Type);
             if (recipe is null) continue;
-            var (input, inputUnits, output) = recipe.Value;
+            var (inputs, output) = recipe.Value;
 
             var staffing = StaffingFraction(structure);
-            var maxOutput = (int)(Industrial.MaxOutputPerDay * staffing);
-            if (maxOutput <= 0) continue;
+            var maxByStaffing = (int)(Industrial.MaxOutputPerDay * staffing);
+            if (maxByStaffing <= 0) continue;
 
-            // Limited by output capacity in own buffer
             var currentOutput = structure.ManufacturedStorage.GetValueOrDefault(output);
             var outputCapacityRemaining = Math.Max(0, structure.InternalStorageCapacity - currentOutput);
-            maxOutput = Math.Min(maxOutput, outputCapacityRemaining);
-            if (maxOutput <= 0) continue;
+            var maxByCapacity = outputCapacityRemaining;
 
-            // We need `inputUnits` × `maxOutput` processed goods to produce maxOutput units.
-            var inputNeeded = inputUnits * maxOutput;
-            var processedPrice = Industrial.ProcessedGoodPrice(input);
-            var inputPulled = PullProcessedGood(state, structure, input, inputNeeded, processedPrice);
+            // M14b multi-input: bottleneck = whichever input has the least available stock relative
+            // to its consumption rate per output unit. Sum across all operational processors.
+            int maxByInputs = int.MaxValue;
+            foreach (var (input, units) in inputs)
+            {
+                var available = AvailableProcessedAcrossProcessors(state, input);
+                var canProduce = available / units;
+                if (canProduce < maxByInputs) maxByInputs = canProduce;
+            }
 
-            var actualOutput = inputPulled / inputUnits;  // floor: only whole units produced
+            var actualOutput = Math.Min(Math.Min(maxByStaffing, maxByCapacity), maxByInputs);
             if (actualOutput <= 0) continue;
+
+            // Pull exactly what's needed for actualOutput units. Each pull does a real cross-entity
+            // cash transaction (Mfg pays processor's HQ at the processed-good price).
+            foreach (var (input, units) in inputs)
+            {
+                var needed = actualOutput * units;
+                var price = Industrial.ProcessedGoodPrice(input);
+                PullProcessedGood(state, structure, input, needed, price);
+            }
 
             structure.ManufacturedStorage[output] = currentOutput + actualOutput;
         }
+    }
+
+    /// <summary>Sum the available stock of a processed good across all operational processors.</summary>
+    private static int AvailableProcessedAcrossProcessors(SimState state, ProcessedGood good)
+    {
+        int total = 0;
+        foreach (var p in state.City.Structures.Values)
+        {
+            if (!Industrial.IsProcessor(p.Type)) continue;
+            if (!p.Operational || p.Inactive) continue;
+            total += p.ProcessedStorage.GetValueOrDefault(good);
+        }
+        return total;
     }
 
     // === Processor sells overflow to regional treasury at full processed price ===

@@ -38,6 +38,7 @@ public static class Industrial
         StructureType.Quarry => RawMaterial.Rock,
         StructureType.SandPit => RawMaterial.Sand,
         StructureType.Farm => RawMaterial.Crops,
+        StructureType.OilWell => RawMaterial.Petroleum,
         _ => null,
     };
 
@@ -49,20 +50,58 @@ public static class Industrial
         StructureType.Mill => (RawMaterial.Crops, ProcessedGood.Grain),
         StructureType.AggregatePlant => (RawMaterial.Rock, ProcessedGood.Aggregate),
         StructureType.SilicatePlant => (RawMaterial.Sand, ProcessedGood.Silicate),
-        StructureType.FuelRefinery => (RawMaterial.Coal, ProcessedGood.Fuel),
+        StructureType.FuelRefinery => (RawMaterial.Petroleum, ProcessedGood.Fuel),       // M14b: now consumes oil
+        StructureType.PulpMill => (RawMaterial.Wood, ProcessedGood.Pulp),                 // M14b
+        StructureType.PlasticPlant => (RawMaterial.Petroleum, ProcessedGood.Plastic),     // M14b
         _ => null,
     };
 
-    /// <summary>(input processed good, input units per output, output manufactured good) for manufacturer types, or null.</summary>
-    public static (ProcessedGood Input, int InputUnits, ManufacturedGood Output)? ManufacturerRecipe(StructureType type) => type switch
+    /// <summary>
+    /// Manufacturer recipe: a list of (input, units-per-output) and a single output good.
+    /// M14b: multi-input recipes. A manufacturer can only produce when ALL inputs are available
+    /// in proportion. Returns null for non-manufacturer types.
+    /// </summary>
+    public static (IReadOnlyList<(ProcessedGood Input, int Units)> Inputs, ManufacturedGood Output)? ManufacturerRecipe(StructureType type) => type switch
     {
-        StructureType.HouseholdFactory => (ProcessedGood.Lumber, 5, ManufacturedGood.Household),
-        StructureType.BldgSuppliesFactory => (ProcessedGood.Lumber, 9, ManufacturedGood.BldgSupplies),
-        StructureType.MetalGoodsFactory => (ProcessedGood.Steel, 3, ManufacturedGood.MetalGoods),
-        StructureType.FoodPackingPlant => (ProcessedGood.Grain, 4, ManufacturedGood.Food),
-        StructureType.ClothingFactory => (ProcessedGood.Textiles, 2, ManufacturedGood.Clothing),
-        StructureType.ConcretePlant => (ProcessedGood.Aggregate, 5, ManufacturedGood.Concrete),
-        StructureType.GlassWorks => (ProcessedGood.Silicate, 10, ManufacturedGood.GlassGoods),
+        // Multi-input manufacturers per design: BldgSupplies = Wood + Metal + Plastic, etc.
+        StructureType.HouseholdFactory => (
+            new (ProcessedGood, int)[] {
+                (ProcessedGood.Lumber, 5),
+                (ProcessedGood.Steel, 2),
+                (ProcessedGood.Silicate, 1),   // glass component
+                (ProcessedGood.Plastic, 1),
+            }, ManufacturedGood.Household),
+        StructureType.BldgSuppliesFactory => (
+            new (ProcessedGood, int)[] {
+                (ProcessedGood.Lumber, 6),
+                (ProcessedGood.Steel, 2),
+                (ProcessedGood.Plastic, 1),
+            }, ManufacturedGood.BldgSupplies),
+        StructureType.MetalGoodsFactory => (
+            new (ProcessedGood, int)[] {
+                (ProcessedGood.Steel, 3),
+                (ProcessedGood.Plastic, 1),
+            }, ManufacturedGood.MetalGoods),
+        StructureType.FoodPackingPlant => (
+            new (ProcessedGood, int)[] {
+                (ProcessedGood.Grain, 4),
+                (ProcessedGood.Plastic, 1),
+                (ProcessedGood.Silicate, 1),   // glass jars
+            }, ManufacturedGood.Food),
+        StructureType.ClothingFactory => (
+            new (ProcessedGood, int)[] {
+                (ProcessedGood.Textiles, 2),
+                (ProcessedGood.Plastic, 1),    // synthetic fibers
+            }, ManufacturedGood.Clothing),
+        StructureType.ConcretePlant => (
+            new (ProcessedGood, int)[] {
+                (ProcessedGood.Aggregate, 5),
+            }, ManufacturedGood.Concrete),
+        StructureType.PaperMill => (
+            new (ProcessedGood, int)[] {
+                (ProcessedGood.Pulp, 3),
+            }, ManufacturedGood.Paper),
+        // GlassWorks dropped per M14b design — Silicate is consumed directly by other manufacturers.
         _ => null,
     };
 
@@ -76,6 +115,7 @@ public static class Industrial
         RawMaterial.Rock => 3,
         RawMaterial.Sand => 2,
         RawMaterial.Coal => 2,
+        RawMaterial.Petroleum => 5,    // M14b
         _ => throw new ArgumentOutOfRangeException(nameof(good)),
     };
 
@@ -88,6 +128,8 @@ public static class Industrial
         ProcessedGood.Aggregate => 6,
         ProcessedGood.Silicate => 4,
         ProcessedGood.Fuel => 8,
+        ProcessedGood.Plastic => 10,   // M14b
+        ProcessedGood.Pulp => 3,       // M14b
         _ => throw new ArgumentOutOfRangeException(nameof(good)),
     };
 
@@ -100,6 +142,7 @@ public static class Industrial
         ManufacturedGood.Clothing => 8,
         ManufacturedGood.Concrete => 60,
         ManufacturedGood.GlassGoods => 80,
+        ManufacturedGood.Paper => 15,  // M14b
         _ => throw new ArgumentOutOfRangeException(nameof(good)),
     };
 
@@ -114,6 +157,7 @@ public static class Industrial
         StructureType.Quarry => 100_000,
         StructureType.SandPit => 80_000,
         StructureType.Farm => 100_000,
+        StructureType.OilWell => 250_000,           // M14b
         // Processors
         StructureType.Sawmill => 200_000,
         StructureType.Smelter => 400_000,
@@ -121,6 +165,8 @@ public static class Industrial
         StructureType.AggregatePlant => 200_000,
         StructureType.SilicatePlant => 200_000,
         StructureType.FuelRefinery => 400_000,
+        StructureType.PulpMill => 200_000,          // M14b
+        StructureType.PlasticPlant => 400_000,      // M14b
         // Manufacturers
         StructureType.HouseholdFactory => 300_000,
         StructureType.BldgSuppliesFactory => 300_000,
@@ -129,6 +175,7 @@ public static class Industrial
         StructureType.ClothingFactory => 300_000,
         StructureType.ConcretePlant => 300_000,
         StructureType.GlassWorks => 300_000,
+        StructureType.PaperMill => 250_000,         // M14b
         // Storage
         StructureType.Storage => 80_000,
         StructureType.FuelStorage => 80_000,
@@ -146,6 +193,7 @@ public static class Industrial
         StructureType.Quarry => 1_000,
         StructureType.SandPit => 1_000,
         StructureType.Farm => 1_000,
+        StructureType.OilWell => 3_000,             // M14b
         // Processors
         StructureType.Sawmill => 3_000,
         StructureType.Smelter => 5_000,
@@ -153,6 +201,8 @@ public static class Industrial
         StructureType.AggregatePlant => 3_000,
         StructureType.SilicatePlant => 3_000,
         StructureType.FuelRefinery => 5_000,
+        StructureType.PulpMill => 3_000,            // M14b
+        StructureType.PlasticPlant => 5_000,        // M14b
         // Manufacturers
         StructureType.HouseholdFactory => 4_000,
         StructureType.BldgSuppliesFactory => 4_000,
@@ -161,6 +211,7 @@ public static class Industrial
         StructureType.ClothingFactory => 4_000,
         StructureType.ConcretePlant => 4_000,
         StructureType.GlassWorks => 4_000,
+        StructureType.PaperMill => 3_000,           // M14b
         // Storage — reduced from $1,000 to $500 so storage breaks even at modest scale
         // (2-3 manufacturers feeding 1 storage is enough to cover utility + property tax)
         StructureType.Storage => 500,

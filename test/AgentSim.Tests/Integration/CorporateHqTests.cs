@@ -27,12 +27,13 @@ public class CorporateHqTests
     {
         var (sim, hq) = NewSimWithHq(IndustryType.Forestry);
 
-        // M14: Forestry chain = ForestExtractor + Sawmill only (manufacturer is standalone now).
-        // = $150k + $250k = $400k. 2× = $800k.
+        // M14b: Forestry chain = ForestExtractor + Sawmill + PulpMill.
+        // = $150k + $250k + $200k = $600k. 2× = $1.2M.
         var expected = 2 * (Construction.Cost(StructureType.ForestExtractor)
-            + Construction.Cost(StructureType.Sawmill));
+            + Construction.Cost(StructureType.Sawmill)
+            + Construction.Cost(StructureType.PulpMill));
         Assert.Equal(expected, hq.CashBalance);
-        Assert.Equal(800_000, hq.CashBalance);
+        Assert.Equal(1_200_000, hq.CashBalance);
     }
 
     [Fact]

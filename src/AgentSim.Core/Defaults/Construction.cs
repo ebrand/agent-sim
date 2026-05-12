@@ -46,6 +46,12 @@ public static class Construction
     public const int Storage = 150_000;
     public const int FuelStorage = 150_000;
 
+    // M14b additions
+    public const int OilWell = 250_000;        // oil drilling — more expensive than simple mine
+    public const int PulpMill = 200_000;        // wood pulping
+    public const int PlasticPlant = 350_000;    // petrochemical
+    public const int PaperMill = 300_000;       // paper manufacturer
+
     /// <summary>
     /// Construction multiplier (× monthly upkeep) for treasury-funded structures. Lets each
     /// structure type set its own capital-to-operating ratio. Returns 0 for non-treasury-funded.
@@ -109,6 +115,11 @@ public static class Construction
             StructureType.GlassWorks => GlassWorks,
             StructureType.Storage => Storage,
             StructureType.FuelStorage => FuelStorage,
+            // M14b
+            StructureType.OilWell => OilWell,
+            StructureType.PulpMill => PulpMill,
+            StructureType.PlasticPlant => PlasticPlant,
+            StructureType.PaperMill => PaperMill,
             _ => 0,
         };
     }

@@ -49,6 +49,7 @@ public enum StructureType
     ClothingFactory,
     ConcretePlant,
     PaperMill,         // M14b: Pulp → Paper
+    Printer,           // M14e: Paper + Plastic → Books (manufacturer-to-manufacturer chain-up)
     GlassWorks,        // M14b: deprecated — Silicate is now consumed directly by other manufacturers
 
     // Industrial — storage (vestigial after M14; no longer placeable, no role in production)
@@ -118,7 +119,8 @@ public static class StructureTypeExtensions
         StructureType.HouseholdFactory or StructureType.BldgSuppliesFactory
             or StructureType.MetalGoodsFactory or StructureType.FoodPackingPlant
             or StructureType.ClothingFactory or StructureType.ConcretePlant
-            or StructureType.GlassWorks or StructureType.PaperMill => StructureCategory.IndustrialManufacturer,
+            or StructureType.GlassWorks or StructureType.PaperMill
+            or StructureType.Printer => StructureCategory.IndustrialManufacturer,
 
         StructureType.Storage or StructureType.FuelStorage => StructureCategory.IndustrialStorage,
 

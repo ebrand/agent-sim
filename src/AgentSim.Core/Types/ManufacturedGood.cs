@@ -14,4 +14,5 @@ public enum ManufacturedGood
     Concrete,
     GlassGoods,
     Paper,
+    Books,        // M14e: from Printer consuming Paper
 }

@@ -68,53 +68,65 @@ public static class Industrial
     };
 
     /// <summary>
-    /// Manufacturer recipe: a list of (input, units-per-output) and a single output good.
-    /// M14b: multi-input recipes. A manufacturer can only produce when ALL inputs are available
-    /// in proportion. Returns null for non-manufacturer types.
+    /// Manufacturer recipe: lists of (input, units-per-output) for both processed-good and
+    /// manufactured-good inputs, plus a single output manufactured good. M14e: a manufacturer
+    /// can consume other manufacturers' outputs, enabling chains like
+    /// Pulp → Paper → Books or similar deeper supply structures.
+    ///
+    /// Returns null for non-manufacturer types.
     /// </summary>
-    public static (IReadOnlyList<(ProcessedGood Input, int Units)> Inputs, ManufacturedGood Output)? ManufacturerRecipe(StructureType type) => type switch
+    public static (
+        IReadOnlyList<(ProcessedGood Input, int Units)> ProcessedInputs,
+        IReadOnlyList<(ManufacturedGood Input, int Units)> ManufacturedInputs,
+        ManufacturedGood Output
+    )? ManufacturerRecipe(StructureType type) => type switch
     {
-        // Multi-input manufacturers per design: BldgSupplies = Wood + Metal + Plastic, etc.
         StructureType.HouseholdFactory => (
             new (ProcessedGood, int)[] {
                 (ProcessedGood.Lumber, 5),
                 (ProcessedGood.Steel, 2),
-                (ProcessedGood.Silicate, 1),   // glass component
+                (ProcessedGood.Silicate, 1),
                 (ProcessedGood.Plastic, 1),
-            }, ManufacturedGood.Household),
+            }, Array.Empty<(ManufacturedGood, int)>(), ManufacturedGood.Household),
         StructureType.BldgSuppliesFactory => (
             new (ProcessedGood, int)[] {
                 (ProcessedGood.Lumber, 6),
                 (ProcessedGood.Steel, 2),
                 (ProcessedGood.Plastic, 1),
-            }, ManufacturedGood.BldgSupplies),
+            }, Array.Empty<(ManufacturedGood, int)>(), ManufacturedGood.BldgSupplies),
         StructureType.MetalGoodsFactory => (
             new (ProcessedGood, int)[] {
                 (ProcessedGood.Steel, 3),
                 (ProcessedGood.Plastic, 1),
-            }, ManufacturedGood.MetalGoods),
+            }, Array.Empty<(ManufacturedGood, int)>(), ManufacturedGood.MetalGoods),
         StructureType.FoodPackingPlant => (
             new (ProcessedGood, int)[] {
                 (ProcessedGood.Grain, 3),
-                (ProcessedGood.Meat, 2),       // M14c: Slaughterhouse output
+                (ProcessedGood.Meat, 2),
                 (ProcessedGood.Plastic, 1),
-                (ProcessedGood.Silicate, 1),   // glass jars
-            }, ManufacturedGood.Food),
+                (ProcessedGood.Silicate, 1),
+            }, Array.Empty<(ManufacturedGood, int)>(), ManufacturedGood.Food),
         StructureType.ClothingFactory => (
             new (ProcessedGood, int)[] {
-                (ProcessedGood.Cotton, 2),     // M14c: was Textiles; Cotton from Ginnery
-                (ProcessedGood.Plastic, 1),    // synthetic fibers
-            }, ManufacturedGood.Clothing),
+                (ProcessedGood.Cotton, 2),
+                (ProcessedGood.Plastic, 1),
+            }, Array.Empty<(ManufacturedGood, int)>(), ManufacturedGood.Clothing),
         StructureType.ConcretePlant => (
             new (ProcessedGood, int)[] {
                 (ProcessedGood.Aggregate, 4),
-                (ProcessedGood.Chalk, 1),       // M14d: cement needs lime/chalk
-            }, ManufacturedGood.Concrete),
+                (ProcessedGood.Chalk, 1),
+            }, Array.Empty<(ManufacturedGood, int)>(), ManufacturedGood.Concrete),
         StructureType.PaperMill => (
             new (ProcessedGood, int)[] {
                 (ProcessedGood.Pulp, 3),
-            }, ManufacturedGood.Paper),
-        // GlassWorks dropped per M14b design — Silicate is consumed directly by other manufacturers.
+            }, Array.Empty<(ManufacturedGood, int)>(), ManufacturedGood.Paper),
+        // M14e: Printer chains up off PaperMill's output. Consumes Paper (manufactured) + Plastic (processed).
+        StructureType.Printer => (
+            new (ProcessedGood, int)[] {
+                (ProcessedGood.Plastic, 1),    // book binding / cover plastic
+            }, new (ManufacturedGood, int)[] {
+                (ManufacturedGood.Paper, 5),   // 5 sheets of paper per book
+            }, ManufacturedGood.Books),
         _ => null,
     };
 
@@ -164,6 +176,7 @@ public static class Industrial
         ManufacturedGood.Concrete => 80,      // was 60
         ManufacturedGood.GlassGoods => 80,    // unchanged (GlassWorks dropped; vestigial)
         ManufacturedGood.Paper => 30,         // was 15
+        ManufacturedGood.Books => 80,         // M14e: assembled good from Paper + Plastic
         _ => throw new ArgumentOutOfRangeException(nameof(good)),
     };
 
@@ -202,6 +215,7 @@ public static class Industrial
         StructureType.ConcretePlant => 300_000,
         StructureType.GlassWorks => 300_000,
         StructureType.PaperMill => 250_000,         // M14b
+        StructureType.Printer => 300_000,           // M14e
         // Storage
         StructureType.Storage => 80_000,
         StructureType.FuelStorage => 80_000,
@@ -243,6 +257,7 @@ public static class Industrial
         StructureType.ConcretePlant => 4_000,
         StructureType.GlassWorks => 4_000,
         StructureType.PaperMill => 3_000,           // M14b
+        StructureType.Printer => 4_000,             // M14e
         // Storage — reduced from $1,000 to $500 so storage breaks even at modest scale
         // (2-3 manufacturers feeding 1 storage is enough to cover utility + property tax)
         StructureType.Storage => 500,

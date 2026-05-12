@@ -61,6 +61,9 @@ public static class Construction
     // M14d additions (Stone diversification)
     public const int ChalkPlant = 250_000;      // rock → chalk processor
 
+    // M14e additions (Mfg-to-Mfg chain-up)
+    public const int Printer = 350_000;         // Paper + Plastic → Books
+
     /// <summary>
     /// Construction multiplier (× monthly upkeep) for treasury-funded structures. Lets each
     /// structure type set its own capital-to-operating ratio. Returns 0 for non-treasury-funded.
@@ -136,6 +139,8 @@ public static class Construction
             StructureType.Ginnery => Ginnery,
             // M14d (Stone diversification)
             StructureType.ChalkPlant => ChalkPlant,
+            // M14e (Mfg-to-Mfg chain-up)
+            StructureType.Printer => Printer,
             _ => 0,
         };
     }

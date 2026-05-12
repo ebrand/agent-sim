@@ -206,6 +206,34 @@ public sealed class Sim
     }
 
     /// <summary>
+    /// Place a restoration structure (Park / ReforestationSite / WetlandRestoration).
+    /// M15: restoration structures sit outside zones and restore climate / nature per day.
+    /// </summary>
+    public Structure PlaceRestorationStructure(StructureType type)
+    {
+        if (type != StructureType.Park
+            && type != StructureType.ReforestationSite
+            && type != StructureType.WetlandRestoration)
+        {
+            throw new ArgumentException($"{type} is not a restoration structure type", nameof(type));
+        }
+
+        ChargeConstructionCost(type);
+
+        var structure = new Structure
+        {
+            Id = State.AllocateStructureId(),
+            Type = type,
+            ZoneId = 0,
+            ResidentialCapacity = 0,
+            ConstructionTicks = 0,
+            RequiredConstructionTicks = 7,
+        };
+        State.City.Structures[structure.Id] = structure;
+        return structure;
+    }
+
+    /// <summary>
     /// Place a CorporateHq inside a commercial zone for the given industry. The HQ self-funds:
     /// no deduction from the city treasury. Its starting CashBalance is 2× the cost of building
     /// out the entire vertical (see Defaults.Industry.StartingCashFor), leaving roughly half its
@@ -354,6 +382,7 @@ public sealed class Sim
             CommercialOperationMechanic.HireForNewlyOperationalStructures(State);
             IndustrialProductionMechanic.RunDaily(State);
             EducationMechanic.RunDaily(State);
+            EnvironmentalDegradationMechanic.RunDaily(State);
 
             // Periodic settlements (fires on days 1, 8, 15, 22, 30)
             SettlementMechanic.RunDailySettlements(State);

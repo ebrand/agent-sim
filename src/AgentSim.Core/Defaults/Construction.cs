@@ -60,6 +60,11 @@ public static class Construction
     // M14e additions (Mfg-to-Mfg chain-up)
     public const int Printer = 350_000;         // Paper + Plastic → Books
 
+    // M15 additions (Restoration)
+    public const int Park = 80_000;             // urban park — light restoration
+    public const int ReforestationSite = 150_000;  // strongest single-site restoration
+    public const int WetlandRestoration = 120_000; // balanced climate + nature recovery
+
     /// <summary>
     /// Construction multiplier (× monthly upkeep) for treasury-funded structures. Lets each
     /// structure type set its own capital-to-operating ratio. Returns 0 for non-treasury-funded.
@@ -133,6 +138,10 @@ public static class Construction
             StructureType.ChalkPlant => ChalkPlant,
             // M14e (Mfg-to-Mfg chain-up)
             StructureType.Printer => Printer,
+            // M15 (Restoration)
+            StructureType.Park => Park,
+            StructureType.ReforestationSite => ReforestationSite,
+            StructureType.WetlandRestoration => WetlandRestoration,
             _ => 0,
         };
     }

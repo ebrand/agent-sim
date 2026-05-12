@@ -337,6 +337,7 @@ public class ServiceEmigrationTests
             PrimaryEducationPercent = 0,    // intentionally bad — but student isn't in primary
             SecondaryEducationPercent = 80, // student is here
             CollegeEducationPercent = 100,
+            EnvironmentalPercent = 100,
         };
 
         var worst = ServiceSatisfactionMechanic.WorstOfForAgent(student, snap);
@@ -364,6 +365,7 @@ public class ServiceEmigrationTests
             PrimaryEducationPercent = 30,  // bad primary — adult cares
             SecondaryEducationPercent = 100,
             CollegeEducationPercent = 100,
+            EnvironmentalPercent = 100,
         };
 
         var worst = ServiceSatisfactionMechanic.WorstOfForAgent(adult, snap);

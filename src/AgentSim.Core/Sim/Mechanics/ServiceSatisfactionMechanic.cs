@@ -20,6 +20,8 @@ public static class ServiceSatisfactionMechanic
         public double PrimaryEducationPercent { get; init; }
         public double SecondaryEducationPercent { get; init; }
         public double CollegeEducationPercent { get; init; }
+        /// <summary>M15: min(climate, nature) × 100. Adds environmental quality to the worst-of.</summary>
+        public double EnvironmentalPercent { get; init; }
     }
 
     public static Snapshot Compute(SimState state)
@@ -63,6 +65,9 @@ public static class ServiceSatisfactionMechanic
             .Where(s => s.Type == type && s.Operational && !s.Inactive)
             .Sum(s => s.SeatCapacity));
 
+        // M15: environmental quality is the worse of climate/nature, expressed 0-100.
+        var envPercent = 100.0 * Math.Min(state.Region.Climate, state.Region.Nature);
+
         return new Snapshot
         {
             CivicPercent = SatisfactionPercent(CapacityOfCategory(StructureCategory.Civic), totalAgents),
@@ -71,6 +76,7 @@ public static class ServiceSatisfactionMechanic
             PrimaryEducationPercent = SatisfactionPercent(SchoolCapacity(StructureType.PrimarySchool), primaryAgeDemand),
             SecondaryEducationPercent = SatisfactionPercent(SchoolCapacity(StructureType.SecondarySchool), secondaryAgeDemand),
             CollegeEducationPercent = SatisfactionPercent(SchoolCapacity(StructureType.College), collegeAgeDemand),
+            EnvironmentalPercent = envPercent,
         };
     }
 
@@ -93,9 +99,16 @@ public static class ServiceSatisfactionMechanic
     public static double WorstOfForAgent(Agent agent, Snapshot snapshot)
     {
         double educationPct = PrimaryEducationForAgent(agent, snapshot);
-        return Math.Min(
-            Math.Min(snapshot.CivicPercent, snapshot.HealthcarePercent),
-            Math.Min(snapshot.UtilityPercent, educationPct));
+        // M15: environmental quality is included in the worst-of. A heavily-polluted region
+        // pushes emigration just like a missing clinic would.
+        return new[]
+        {
+            snapshot.CivicPercent,
+            snapshot.HealthcarePercent,
+            snapshot.UtilityPercent,
+            educationPct,
+            snapshot.EnvironmentalPercent,
+        }.Min();
     }
 
     private static double PrimaryEducationForAgent(Agent agent, Snapshot snapshot)

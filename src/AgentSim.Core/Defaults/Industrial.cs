@@ -11,12 +11,12 @@ public static class Industrial
 {
     /// <summary>Maximum daily output per industrial structure at 100% staffing.</summary>
     /// <summary>
-    /// Max units a structure produces per day at 100% staffing. Calibration target (M14b): a
-    /// modest single-Mfg chain (1 extractor + 1 processor + 1 standalone Mfg) should be roughly
-    /// break-even at this scale. Throughput is the dominant lever — overhead per structure is
-    /// largely fixed.
+    /// Max units a structure produces per day at 100% staffing. Smoke-test calibration: at 25
+    /// the chain produced too little revenue to cover wages; at 100 a 10-worker structure runs
+    /// 3,000 units/month which gives reasonable revenue against ~$36k wages. Tune further as
+    /// gameplay emerges.
     /// </summary>
-    public const int MaxOutputPerDay = 25;
+    public const int MaxOutputPerDay = 100;
 
     /// <summary>Default internal storage capacity for extractor / processor / manufacturer structures.</summary>
     public const int InternalStorageCapacity = 1_000;
@@ -140,35 +140,37 @@ public static class Industrial
 
     public static int ProcessedGoodPrice(ProcessedGood good) => good switch
     {
-        ProcessedGood.Lumber => 4,
-        ProcessedGood.Steel => 8,
-        ProcessedGood.Grain => 3,
-        ProcessedGood.Textiles => 2,
-        ProcessedGood.Aggregate => 6,
-        ProcessedGood.Silicate => 4,
-        ProcessedGood.Fuel => 8,
-        ProcessedGood.Plastic => 10,   // M14b
-        ProcessedGood.Pulp => 3,       // M14b
-        ProcessedGood.Meat => 7,       // M14c
-        ProcessedGood.Cotton => 4,     // M14c
-        ProcessedGood.Chalk => 5,      // M14d
+        // M14 calibration: processed-good prices ~3× prior values. Mfg pays HQ at these prices,
+        // so this is the lever that brings HQ revenue closer to its wage/utility overhead at the
+        // current 10-worker scale. Consumer dollar COL stays the same; consumers just buy fewer
+        // units per dollar at the resulting higher manufactured-good prices.
+        ProcessedGood.Lumber => 12,
+        ProcessedGood.Steel => 24,
+        ProcessedGood.Grain => 9,
+        ProcessedGood.Textiles => 6,
+        ProcessedGood.Aggregate => 18,
+        ProcessedGood.Silicate => 12,
+        ProcessedGood.Fuel => 24,
+        ProcessedGood.Plastic => 30,
+        ProcessedGood.Pulp => 9,
+        ProcessedGood.Meat => 21,
+        ProcessedGood.Cotton => 12,
+        ProcessedGood.Chalk => 15,
         _ => throw new ArgumentOutOfRangeException(nameof(good)),
     };
 
     public static int ManufacturedGoodPrice(ManufacturedGood good) => good switch
     {
-        // M14b calibration: roughly 2× prior values to keep manufacturer margins above overhead
-        // at small chain scale. The exact balance depends on staffing + throughput; tune as
-        // the sim runs and gameplay emerges.
-        ManufacturedGood.Household => 100,    // was 40 — needs Lumber+Steel+Silicate+Plastic
-        ManufacturedGood.BldgSupplies => 120, // was 72 — needs Lumber+Steel+Plastic
-        ManufacturedGood.MetalGoods => 90,    // was 48
-        ManufacturedGood.Food => 50,          // was 24
-        ManufacturedGood.Clothing => 30,      // was 8 — significantly underpriced before
-        ManufacturedGood.Concrete => 80,      // was 60
-        ManufacturedGood.GlassGoods => 80,    // unchanged (GlassWorks dropped; vestigial)
-        ManufacturedGood.Paper => 30,         // was 15
-        ManufacturedGood.Books => 80,         // M14e: assembled good from Paper + Plastic
+        // M14 calibration: manufactured-good prices ~3× initial M14b values to match the 3×
+        // processed-good price bump and give manufacturers a margin above overhead.
+        ManufacturedGood.Household => 300,
+        ManufacturedGood.BldgSupplies => 360,
+        ManufacturedGood.MetalGoods => 270,
+        ManufacturedGood.Food => 150,
+        ManufacturedGood.Clothing => 90,
+        ManufacturedGood.Concrete => 240,
+        ManufacturedGood.Paper => 90,
+        ManufacturedGood.Books => 240,
         _ => throw new ArgumentOutOfRangeException(nameof(good)),
     };
 
@@ -249,17 +251,20 @@ public static class Industrial
     // ===== Job slots =====
 
     /// <summary>
-    /// Standard 100-worker mix per industrial structure: 15 college / 20 secondary / 40 primary /
-    /// 25 uneducated.
+    /// M14 calibration: 10-worker mix per industrial structure (1 college / 2 secondary /
+    /// 4 primary / 3 uneducated). The prior 100-worker mix was sized for a 50k-population
+    /// mid-game city; in a 50-settler bootstrap, ~5% staffing made production effectively zero.
+    /// At 10 workers each, a chain with 5 industrial structures plus a manufacturer fits within
+    /// the settler pool while leaving room for commercial and service-sector employment.
     /// </summary>
     public static IReadOnlyDictionary<EducationTier, int> JobSlots(StructureType type)
     {
         return new Dictionary<EducationTier, int>
         {
-            [EducationTier.College] = 15,
-            [EducationTier.Secondary] = 20,
-            [EducationTier.Primary] = 40,
-            [EducationTier.Uneducated] = 25,
+            [EducationTier.College] = 1,
+            [EducationTier.Secondary] = 2,
+            [EducationTier.Primary] = 4,
+            [EducationTier.Uneducated] = 3,
         };
     }
 

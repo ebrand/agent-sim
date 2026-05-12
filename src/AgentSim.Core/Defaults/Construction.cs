@@ -41,9 +41,6 @@ public static class Construction
     public const int FoodPackingPlant = 400_000;
     public const int ClothingFactory = 400_000;
     public const int ConcretePlant = 400_000;
-    public const int GlassWorks = 400_000;
-    public const int Storage = 150_000;
-    public const int FuelStorage = 150_000;
 
     // M14b additions
     public const int OilWell = 250_000;        // oil drilling — more expensive than simple mine
@@ -122,9 +119,6 @@ public static class Construction
             StructureType.FoodPackingPlant => FoodPackingPlant,
             StructureType.ClothingFactory => ClothingFactory,
             StructureType.ConcretePlant => ConcretePlant,
-            StructureType.GlassWorks => GlassWorks,
-            StructureType.Storage => Storage,
-            StructureType.FuelStorage => FuelStorage,
             // M14b
             StructureType.OilWell => OilWell,
             StructureType.PulpMill => PulpMill,

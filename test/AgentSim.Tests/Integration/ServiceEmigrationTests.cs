@@ -42,7 +42,7 @@ public class ServiceEmigrationTests
         Assert.Throws<ArgumentException>(() => sim.PlaceServiceStructure(StructureType.House));
         Assert.Throws<ArgumentException>(() => sim.PlaceServiceStructure(StructureType.Shop));
         Assert.Throws<ArgumentException>(() => sim.PlaceServiceStructure(StructureType.PrimarySchool));
-        Assert.Throws<ArgumentException>(() => sim.PlaceServiceStructure(StructureType.Storage));
+        Assert.Throws<ArgumentException>(() => sim.PlaceServiceStructure(StructureType.ForestExtractor));
     }
 
     [Fact]

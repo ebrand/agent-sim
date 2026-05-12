@@ -42,8 +42,7 @@ public static class ServiceSatisfactionMechanic
             && (s.Category == StructureCategory.Commercial
                 || s.Category == StructureCategory.IndustrialExtractor
                 || s.Category == StructureCategory.IndustrialProcessor
-                || s.Category == StructureCategory.IndustrialManufacturer
-                || s.Category == StructureCategory.IndustrialStorage));
+                || s.Category == StructureCategory.IndustrialManufacturer));
         var utilityDemand = totalAgents + commercialOrIndustrial;
 
         // Education demand by tier — count agents whose age falls in each band.

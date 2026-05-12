@@ -213,7 +213,6 @@ public static class SettlementMechanic
         StructureCategory.IndustrialExtractor => Industrial.StructureValue(structure.Type),
         StructureCategory.IndustrialProcessor => Industrial.StructureValue(structure.Type),
         StructureCategory.IndustrialManufacturer => Industrial.StructureValue(structure.Type),
-        StructureCategory.IndustrialStorage => Industrial.StructureValue(structure.Type),
         _ => 0,
     };
 }

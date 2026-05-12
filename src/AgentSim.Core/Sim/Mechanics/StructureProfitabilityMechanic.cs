@@ -68,8 +68,7 @@ public static class StructureProfitabilityMechanic
         return s.Category == StructureCategory.Commercial
             || s.Category == StructureCategory.IndustrialExtractor
             || s.Category == StructureCategory.IndustrialProcessor
-            || s.Category == StructureCategory.IndustrialManufacturer
-            || s.Category == StructureCategory.IndustrialStorage;
+            || s.Category == StructureCategory.IndustrialManufacturer;
     }
 
     private static void GoInactive(SimState state, Structure structure)

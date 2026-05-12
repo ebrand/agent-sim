@@ -21,8 +21,7 @@ public static class CommercialOperationMechanic
             if (structure.Category == StructureCategory.Commercial
                 || structure.Category == StructureCategory.IndustrialExtractor
                 || structure.Category == StructureCategory.IndustrialProcessor
-                || structure.Category == StructureCategory.IndustrialManufacturer
-                || structure.Category == StructureCategory.IndustrialStorage)
+                || structure.Category == StructureCategory.IndustrialManufacturer)
             {
                 if (!AllSlotsFilled(structure))
                 {

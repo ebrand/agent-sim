@@ -21,12 +21,6 @@ public static class Industrial
     /// <summary>Default internal storage capacity for extractor / processor / manufacturer structures.</summary>
     public const int InternalStorageCapacity = 1_000;
 
-    /// <summary>Default storage capacity for the (final) Storage / FuelStorage structures.</summary>
-    public const int FinalStorageCapacity = 10_000;
-
-    /// <summary>Storage's pass-through fee: buys from manufacturer at 80% of price, sells at 100%.</summary>
-    public const double StoragePassThroughRate = 0.80;
-
     /// <summary>Standard worker count for non-storage industrial structures.</summary>
     public const int StandardWorkerCount = 100;
 
@@ -210,12 +204,8 @@ public static class Industrial
         StructureType.FoodPackingPlant => 300_000,
         StructureType.ClothingFactory => 300_000,
         StructureType.ConcretePlant => 300_000,
-        StructureType.GlassWorks => 300_000,
         StructureType.PaperMill => 250_000,         // M14b
         StructureType.Printer => 300_000,           // M14e
-        // Storage
-        StructureType.Storage => 80_000,
-        StructureType.FuelStorage => 80_000,
         _ => throw new ArgumentOutOfRangeException(nameof(type), $"{type} is not an industrial structure"),
     };
 
@@ -251,36 +241,19 @@ public static class Industrial
         StructureType.FoodPackingPlant => 4_000,
         StructureType.ClothingFactory => 4_000,
         StructureType.ConcretePlant => 4_000,
-        StructureType.GlassWorks => 4_000,
         StructureType.PaperMill => 3_000,           // M14b
         StructureType.Printer => 4_000,             // M14e
-        // Storage — reduced from $1,000 to $500 so storage breaks even at modest scale
-        // (2-3 manufacturers feeding 1 storage is enough to cover utility + property tax)
-        StructureType.Storage => 500,
-        StructureType.FuelStorage => 500,
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 
     // ===== Job slots =====
 
     /// <summary>
-    /// Job slot count per tier. Standard 100-worker mix: 15 college / 20 secondary / 40 primary / 25 uneducated.
-    /// Storage uses a 10-worker mix: 1 college / 2 secondary / 4 primary / 3 uneducated.
+    /// Standard 100-worker mix per industrial structure: 15 college / 20 secondary / 40 primary /
+    /// 25 uneducated.
     /// </summary>
     public static IReadOnlyDictionary<EducationTier, int> JobSlots(StructureType type)
     {
-        if (type == StructureType.Storage || type == StructureType.FuelStorage)
-        {
-            return new Dictionary<EducationTier, int>
-            {
-                [EducationTier.College] = 1,
-                [EducationTier.Secondary] = 2,
-                [EducationTier.Primary] = 4,
-                [EducationTier.Uneducated] = 3,
-            };
-        }
-
-        // Standard 100-worker mix for extractor / processor / manufacturer
         return new Dictionary<EducationTier, int>
         {
             [EducationTier.College] = 15,
@@ -301,15 +274,11 @@ public static class Industrial
     public static bool IsManufacturer(StructureType type) =>
         type.Category() == StructureCategory.IndustrialManufacturer;
 
-    public static bool IsStorage(StructureType type) =>
-        type.Category() == StructureCategory.IndustrialStorage;
-
     public static bool IsIndustrial(StructureType type)
     {
         var cat = type.Category();
         return cat == StructureCategory.IndustrialExtractor
             || cat == StructureCategory.IndustrialProcessor
-            || cat == StructureCategory.IndustrialManufacturer
-            || cat == StructureCategory.IndustrialStorage;
+            || cat == StructureCategory.IndustrialManufacturer;
     }
 }

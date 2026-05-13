@@ -89,6 +89,15 @@ public static class Industrial
         StructureType.PaperMill => new MfgRecipe(
             new (MfgInput, int)[] { (MfgInput.Pulp, 3) },
             new[] { CommercialSector.Entertainment }, 90),
+        StructureType.Brewery => new MfgRecipe(
+            new (MfgInput, int)[] { (MfgInput.Flour, 2), (MfgInput.Glass, 1) },
+            new[] { CommercialSector.Entertainment }, 90),
+        StructureType.ElectronicsFactory => new MfgRecipe(
+            new (MfgInput, int)[] { (MfgInput.Steel, 2), (MfgInput.Glass, 1), (MfgInput.Pulp, 1) },
+            new[] { CommercialSector.Retail }, 250),
+        StructureType.PharmaPlant => new MfgRecipe(
+            new (MfgInput, int)[] { (MfgInput.Plastic, 1), (MfgInput.Chalk, 1) },
+            new[] { CommercialSector.Food }, 200),
         _ => null,
     };
 
@@ -145,6 +154,9 @@ public static class Industrial
         StructureType.ClothingFactory => 300_000,
         StructureType.ConcretePlant => 300_000,
         StructureType.PaperMill => 250_000,
+        StructureType.Brewery => 250_000,
+        StructureType.ElectronicsFactory => 400_000,
+        StructureType.PharmaPlant => 350_000,
         _ => throw new ArgumentOutOfRangeException(nameof(type), $"{type} is not an industrial structure"),
     };
 
@@ -179,6 +191,9 @@ public static class Industrial
         StructureType.ClothingFactory => 2_000,
         StructureType.ConcretePlant => 2_000,
         StructureType.PaperMill => 1_500,
+        StructureType.Brewery => 1_500,
+        StructureType.ElectronicsFactory => 2_500,
+        StructureType.PharmaPlant => 2_000,
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 

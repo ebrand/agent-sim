@@ -15,7 +15,9 @@ public enum StructureType
     // Commercial
     Shop,
     Marketplace,
-    CorporateHq,  // M12: industrial supply chain headquarters
+    Restaurant,
+    Theater,
+    CorporateHq,
 
     // Industrial — extractors
     ForestExtractor,
@@ -48,6 +50,9 @@ public enum StructureType
     ClothingFactory,
     ConcretePlant,
     PaperMill,
+    Brewery,
+    ElectronicsFactory,
+    PharmaPlant,
 
     // Civic
     PoliceStation,
@@ -97,6 +102,7 @@ public static class StructureTypeExtensions
             or StructureType.Condo or StructureType.AffordableHousing => StructureCategory.Residential,
 
         StructureType.Shop or StructureType.Marketplace
+            or StructureType.Restaurant or StructureType.Theater
             or StructureType.CorporateHq => StructureCategory.Commercial,
 
         StructureType.ForestExtractor or StructureType.Mine
@@ -113,7 +119,8 @@ public static class StructureTypeExtensions
         StructureType.HouseholdFactory or StructureType.BldgSuppliesFactory
             or StructureType.MetalGoodsFactory or StructureType.FoodPackingPlant
             or StructureType.ClothingFactory or StructureType.ConcretePlant
-            or StructureType.PaperMill => StructureCategory.IndustrialManufacturer,
+            or StructureType.PaperMill or StructureType.Brewery
+            or StructureType.ElectronicsFactory or StructureType.PharmaPlant => StructureCategory.IndustrialManufacturer,
 
         StructureType.PoliceStation or StructureType.FireStation
             or StructureType.TownHall => StructureCategory.Civic,

@@ -52,6 +52,9 @@ public static class Environment
         StructureType.ClothingFactory => 0.0000008,
         StructureType.ConcretePlant => 0.0000020,
         StructureType.PaperMill => 0.0000012,
+        StructureType.Brewery => 0.0000008,
+        StructureType.ElectronicsFactory => 0.0000016,
+        StructureType.PharmaPlant => 0.0000020,
         _ => 0.0,
     };
 
@@ -89,6 +92,9 @@ public static class Environment
         StructureType.ClothingFactory => 0.0000002,
         StructureType.ConcretePlant => 0.0000004,
         StructureType.PaperMill => 0.0000004,
+        StructureType.Brewery => 0.0000002,
+        StructureType.ElectronicsFactory => 0.0000004,
+        StructureType.PharmaPlant => 0.0000006,
         _ => 0.0,
     };
 

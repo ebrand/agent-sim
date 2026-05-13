@@ -24,6 +24,8 @@ public static class Construction
     // Flat costs for commercial / industrial (no monthly upkeep to derive from).
     public const int Shop = 100_000;
     public const int Marketplace = 300_000;
+    public const int Restaurant = 180_000;
+    public const int Theater = 220_000;
     public const int ForestExtractor = 150_000;
     public const int Mine = 150_000;
     public const int Quarry = 150_000;
@@ -41,6 +43,9 @@ public static class Construction
     public const int FoodPackingPlant = 400_000;
     public const int ClothingFactory = 400_000;
     public const int ConcretePlant = 400_000;
+    public const int Brewery = 350_000;
+    public const int ElectronicsFactory = 500_000;
+    public const int PharmaPlant = 450_000;
 
     // M14b additions
     public const int OilWell = 250_000;        // oil drilling — more expensive than simple mine
@@ -106,6 +111,8 @@ public static class Construction
         {
             StructureType.Shop => Shop,
             StructureType.Marketplace => Marketplace,
+            StructureType.Restaurant => Restaurant,
+            StructureType.Theater => Theater,
             StructureType.ForestExtractor => ForestExtractor,
             StructureType.Mine => Mine,
             StructureType.Quarry => Quarry,
@@ -123,6 +130,9 @@ public static class Construction
             StructureType.FoodPackingPlant => FoodPackingPlant,
             StructureType.ClothingFactory => ClothingFactory,
             StructureType.ConcretePlant => ConcretePlant,
+            StructureType.Brewery => Brewery,
+            StructureType.ElectronicsFactory => ElectronicsFactory,
+            StructureType.PharmaPlant => PharmaPlant,
             // M14b
             StructureType.OilWell => OilWell,
             StructureType.PulpMill => PulpMill,

@@ -27,9 +27,13 @@ namespace AgentSimUnity
         [Tooltip("Auto-run on Start. If false, press Space to step one tick.")]
         public bool AutoRun = true;
 
-        private Sim _sim;
+        private Sim? _sim;
         private string _scenarioName = "";
         private float _tickAccumulator;
+
+        /// <summary>Underlying sim — null until Start() runs.</summary>
+        public Sim? Sim => _sim;
+        public string ScenarioName => _scenarioName;
 
         void Start()
         {

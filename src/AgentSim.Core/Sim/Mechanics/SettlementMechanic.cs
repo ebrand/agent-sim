@@ -45,6 +45,10 @@ public static class SettlementMechanic
 
     public static void RunMonthlySettlement(SimState state)
     {
+        // 0. Recompute per-tile land value from current structure placements. Runs first so
+        //    rent/COL/property-tax downstream see fresh values.
+        LandValueMechanic.RunMonthly(state);
+
         // 1. Treasury outflow: monthly upkeep for treasury-funded structures. Sets
         //    UpkeepFundingFraction, which the satisfaction calc consumes in step 9.
         TreasuryUpkeepMechanic.PayMonthlyUpkeep(state);
@@ -148,6 +152,13 @@ public static class SettlementMechanic
         if (residence.Category != StructureCategory.Residential) return;
 
         var rent = Rent.RentForAgent(agent, residence);
+        // M-LV: scale rent by land value under the residence footprint. Higher amenity ->
+        // higher rent. Treasury collects the bumped amount. AffordableHousing keeps its flat
+        // discount — the LV multiplier still applies (cheap housing on a desirable lot is
+        // still cheap, just less so).
+        double avgLv = LandValueMechanic.AverageOverFootprint(state.Region.Tilemap, residence);
+        rent = (int)(rent * (1.0 + avgLv * LandValue.RentLvFactor));
+
         agent.Savings -= rent;
         state.City.TreasuryBalance += rent;
     }
@@ -234,6 +245,14 @@ public static class SettlementMechanic
     {
         var value = StructureValueLookup(structure);
         var tax = (int)(value * TaxRates.PropertyTaxMonthly);
+
+        // M-LV: add a land-value component on top of the flat structure-value tax. Charged
+        // per occupied tile so larger structures on prime land pay proportionally more.
+        double avgLv = LandValueMechanic.AverageOverFootprint(state.Region.Tilemap, structure);
+        var (w, h) = Footprint.For(structure.Type);
+        int lvTax = (int)(avgLv * w * h * LandValue.PropertyTaxPerLvPerTile);
+        tax += lvTax;
+
         if (FoundingPhase.IsActive(state))
         {
             tax = (int)(tax * FoundingPhase.PropertyTaxFactor);

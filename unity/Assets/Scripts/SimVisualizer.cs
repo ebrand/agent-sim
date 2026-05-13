@@ -24,7 +24,16 @@ namespace AgentSimUnity
         private SimBootstrap _bootstrap = null!;
         private UnityTilemap _zoneTilemap = null!;
         private UnityTilemap _structureTilemap = null!;
+        private UnityTilemap _landValueTilemap = null!;
         private Grid _grid = null!;
+
+        /// <summary>Toggle for the land-value heatmap overlay. HUD writes this.</summary>
+        public bool ShowLandValue { get; set; }
+
+        // Re-paint LV when the sim's MaxLandValue changes (i.e., after a monthly recompute).
+        private double _lastMaxLv = -1;
+        private bool _lastShowLv;
+        private readonly HashSet<Vector3Int> _paintedLvCells = new();
 
         /// <summary>Parent Grid for the zone + structure tilemaps. Used by placement UX
         /// to add overlay layers (ghost preview, drag selection).</summary>
@@ -83,6 +92,15 @@ namespace AgentSimUnity
                 _lastStructureCount = state.City.Structures.Count;
             }
 
+            // Repaint LV when toggle changes or when monthly recompute pushed a new MaxLandValue.
+            var tm = state.Region.Tilemap;
+            if (ShowLandValue != _lastShowLv || tm.MaxLandValue != _lastMaxLv)
+            {
+                PaintLandValue(tm);
+                _lastShowLv = ShowLandValue;
+                _lastMaxLv = tm.MaxLandValue;
+            }
+
             HandleClick();
         }
 
@@ -130,6 +148,7 @@ namespace AgentSimUnity
 
             _zoneTilemap = MakeTilemap(gridGo.transform, "Zones", sortingOrder: 0);
             _structureTilemap = MakeTilemap(gridGo.transform, "Structures", sortingOrder: 1);
+            _landValueTilemap = MakeTilemap(gridGo.transform, "LandValue", sortingOrder: 2);
         }
 
         private static UnityTilemap MakeTilemap(Transform parent, string name, int sortingOrder)
@@ -246,6 +265,55 @@ namespace AgentSimUnity
                     }
                 }
             }
+        }
+
+        private void PaintLandValue(SimTilemap tm)
+        {
+            // Clear previous paint.
+            foreach (var cell in _paintedLvCells)
+                _landValueTilemap.SetTile(cell, null);
+            _paintedLvCells.Clear();
+
+            if (!ShowLandValue) return;
+            if (tm.MaxLandValue <= 0) return;
+
+            int n = SimTilemap.MapSize;
+            for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                double lv = tm.LandValueAt(x, y);
+                if (lv <= 0) continue;
+                float t = (float)(lv / tm.MaxLandValue);  // 0..1
+                var color = HeatmapColor(t);
+                var tile = TileFor(color);
+                var cell = new Vector3Int(x, y, 0);
+                _landValueTilemap.SetTile(cell, tile);
+                _paintedLvCells.Add(cell);
+            }
+        }
+
+        // Cool-to-hot gradient: low LV blue → green → yellow → red high LV. Alpha is semi-
+        // transparent so the underlying zone/structure colors stay visible.
+        private static Color HeatmapColor(float t)
+        {
+            t = Mathf.Clamp01(t);
+            Color c;
+            if (t < 0.5f)
+            {
+                float k = t * 2f;
+                c = Color.Lerp(new Color(0.20f, 0.40f, 0.85f, 1f),  // blue
+                               new Color(0.30f, 0.85f, 0.40f, 1f),  // green
+                               k);
+            }
+            else
+            {
+                float k = (t - 0.5f) * 2f;
+                c = Color.Lerp(new Color(0.30f, 0.85f, 0.40f, 1f),  // green
+                               new Color(0.95f, 0.30f, 0.30f, 1f),  // red
+                               k);
+            }
+            c.a = 0.55f;
+            return c;
         }
 
         // ===== Interaction =====

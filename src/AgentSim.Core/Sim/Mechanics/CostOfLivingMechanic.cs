@@ -96,13 +96,28 @@ public static class CostOfLivingMechanic
             return;
         }
 
-        // Pro-rata distribute revenue to commercials in sector.
-        var perStructure = sectorDollars / commercials.Count;
-        var remainder = sectorDollars % commercials.Count;
-        foreach (var c in commercials)
+        // M-LV: distribute revenue weighted by land value under each commercial. High-LV
+        // commercials capture more sector dollars (proxy for foot traffic / desirability).
+        // Weights = 1 + LV*factor; floor of 1 ensures even a zero-LV commercial gets something.
+        var tm = state.Region.Tilemap;
+        var weights = new double[commercials.Count];
+        double totalWeight = 0;
+        for (int i = 0; i < commercials.Count; i++)
         {
-            var share = perStructure + (remainder > 0 ? 1 : 0);
-            if (remainder > 0) remainder--;
+            double lv = LandValueMechanic.AverageOverFootprint(tm, commercials[i]);
+            weights[i] = 1.0 + lv * LandValue.CommercialLvFactor;
+            totalWeight += weights[i];
+        }
+
+        // Assign by proportional weight; running remainder ensures full distribution.
+        int distributed = 0;
+        for (int i = 0; i < commercials.Count; i++)
+        {
+            int share = i < commercials.Count - 1
+                ? (int)(sectorDollars * (weights[i] / totalWeight))
+                : sectorDollars - distributed;  // last gets the rounding remainder
+            distributed += share;
+            var c = commercials[i];
             c.CashBalance += share;
             c.MonthlyRevenue += share;
 

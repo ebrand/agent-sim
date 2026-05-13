@@ -11,8 +11,32 @@ public sealed class Tilemap
 
     private readonly long?[,] _structureAt = new long?[MapSize, MapSize];
     private readonly long?[,] _zoneAt = new long?[MapSize, MapSize];
+    private readonly double[,] _landValue = new double[MapSize, MapSize];
 
     public int Size => MapSize;
+
+    /// <summary>Highest land-value value across all tiles. Updated by LandValueMechanic each month.
+    /// Used by the heatmap renderer to normalize colors.</summary>
+    public double MaxLandValue { get; internal set; }
+
+    public double LandValueAt(int x, int y) =>
+        InBounds(x, y) ? _landValue[x, y] : 0.0;
+
+    internal void SetLandValueAt(int x, int y, double v)
+    {
+        if (InBounds(x, y)) _landValue[x, y] = v;
+    }
+
+    internal void AccumulateLandValue(int x, int y, double delta)
+    {
+        if (InBounds(x, y)) _landValue[x, y] += delta;
+    }
+
+    internal void ResetLandValue()
+    {
+        Array.Clear(_landValue, 0, _landValue.Length);
+        MaxLandValue = 0;
+    }
 
     public long? StructureAt(int x, int y) =>
         InBounds(x, y) ? _structureAt[x, y] : null;

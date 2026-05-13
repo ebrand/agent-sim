@@ -14,9 +14,11 @@ namespace AgentSimUnity
     /// or PanelSettings asset to wire up. Inline styles, runtime PanelSettings.
     /// </summary>
     [RequireComponent(typeof(SimBootstrap))]
+    [RequireComponent(typeof(SimVisualizer))]
     public class HudController : MonoBehaviour
     {
         private SimBootstrap _bootstrap = null!;
+        private SimVisualizer _visualizer = null!;
         private UIDocument _doc = null!;
         private PanelSettings _panelSettings = null!;
 
@@ -37,6 +39,7 @@ namespace AgentSimUnity
         private Button _veryFastBtn = null!;
         private Button _stepBtn = null!;
         private Button _logBtn = null!;
+        private Button _lvBtn = null!;
 
         // Toast stack (bottom-right).
         private VisualElement _toastList = null!;
@@ -64,6 +67,7 @@ namespace AgentSimUnity
         void Awake()
         {
             _bootstrap = GetComponent<SimBootstrap>();
+            _visualizer = GetComponent<SimVisualizer>();
             BuildUIDocument();
             BuildLayout();
         }
@@ -209,6 +213,9 @@ namespace AgentSimUnity
 
             bar.Add(Flex());
 
+            _lvBtn = MakeBtn("LV (V)", ToggleLandValue);
+            bar.Add(_lvBtn);
+
             _logBtn = MakeBtn("Log (L)", ToggleLog);
             bar.Add(_logBtn);
 
@@ -322,6 +329,7 @@ namespace AgentSimUnity
         {
             if (Keyboard.current is null) return;
             if (Keyboard.current.lKey.wasPressedThisFrame) ToggleLog();
+            if (Keyboard.current.vKey.wasPressedThisFrame) ToggleLandValue();
             if (Keyboard.current.spaceKey.wasPressedThisFrame)
             {
                 _bootstrap.CurrentSpeed = _bootstrap.IsPaused
@@ -339,6 +347,12 @@ namespace AgentSimUnity
             _logOpen = !_logOpen;
             _logPanel.style.display = _logOpen ? DisplayStyle.Flex : DisplayStyle.None;
             if (_logOpen) _logScroll.scrollOffset = new Vector2(0, float.MaxValue);
+        }
+
+        private void ToggleLandValue()
+        {
+            _visualizer.ShowLandValue = !_visualizer.ShowLandValue;
+            SetActive(_lvBtn, _visualizer.ShowLandValue);
         }
 
         // ===== Toasts + log entries =====

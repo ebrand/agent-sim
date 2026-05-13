@@ -178,6 +178,11 @@ public sealed class Sim
         structure.X = pos.X;
         structure.Y = pos.Y;
         tm.SetStructureFootprint(structure.Id, pos.X, pos.Y, w, h);
+
+        // M-LV: recompute on every placement so the heatmap reflects the new structure
+        // immediately. Under-construction structures still contribute nothing (filtered
+        // inside the mechanic), but operational ones will start influencing right away.
+        Mechanics.LandValueMechanic.RunMonthly(State);
     }
 
     /// <summary>

@@ -30,6 +30,7 @@ namespace AgentSimUnity
             Inspect,
             PlaceStructure,
             PaintZone,
+            Demolish,
         }
 
         private SimBootstrap _bootstrap = null!;
@@ -127,18 +128,7 @@ namespace AgentSimUnity
 
         private const float TopBarHeightPx = 56f;
 
-        private Vector3Int? MouseToTile()
-        {
-            if (Mouse.current is null) return null;
-            var cam = Camera.main;
-            if (cam == null) return null;
-            var screen = Mouse.current.position.ReadValue();
-            var world = cam.ScreenToWorldPoint(new Vector3(screen.x, screen.y, 0f));
-            int tx = Mathf.FloorToInt(world.x);
-            int ty = Mathf.FloorToInt(world.y);
-            if (tx < 0 || ty < 0 || tx >= SimTilemap.MapSize || ty >= SimTilemap.MapSize) return null;
-            return new Vector3Int(tx, ty, 0);
-        }
+        private Vector3Int? MouseToTile() => SimVisualizer.MouseToTile(Camera.main);
 
         private void HandleEscape()
         {
@@ -173,6 +163,11 @@ namespace AgentSimUnity
                     _zoneDragStart = null;
                 }
             }
+            else if (_mode == Mode.Demolish)
+            {
+                if (Mouse.current.leftButton.wasPressedThisFrame)
+                    TryDemolish(tile.Value);
+            }
         }
 
         // === Ghost overlay ===
@@ -197,6 +192,19 @@ namespace AgentSimUnity
                 var rect = NormalizeRect(start, tile.Value);
                 bool valid = IsZoneValid(rect);
                 PaintGhostRect(rect.x, rect.y, rect.width, rect.height, valid ? GoodColor : BadColor);
+            }
+            else if (_mode == Mode.Demolish)
+            {
+                // Paint the structure's whole footprint in red so the player sees what
+                // they're about to remove.
+                var sim = _bootstrap.Sim;
+                if (sim == null) return;
+                var sid = sim.State.Region.Tilemap.StructureAt(tile.Value.x, tile.Value.y);
+                if (sid is null) return;
+                if (!sim.State.City.Structures.TryGetValue(sid.Value, out var s)) return;
+                if (s.X < 0 || s.Y < 0) return;
+                var (w, h) = Footprint.For(s.Type);
+                PaintGhostRect(s.X, s.Y, w, h, BadColor);
             }
         }
 
@@ -289,6 +297,23 @@ namespace AgentSimUnity
                 return;
             }
             // Stay in mode for chain-placement. Escape to exit.
+        }
+
+        private void TryDemolish(Vector3Int tile)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim == null) return;
+            var sid = sim.State.Region.Tilemap.StructureAt(tile.x, tile.y);
+            if (sid is null) return;
+            try
+            {
+                sim.RemoveStructure(sid.Value);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Placement] Demolition of #{sid.Value} failed: {e.Message}");
+            }
+            // Stay in demolish mode for chain-removal. Esc to exit.
         }
 
         private void TryCreateZone(Vector3Int start, Vector3Int end)
@@ -406,6 +431,9 @@ namespace AgentSimUnity
             });
 
             GUILayout.Space(10);
+            DemolishButton();
+
+            GUILayout.Space(10);
             if (_mode != Mode.Inspect && GUILayout.Button("Cancel (Esc)"))
                 CancelMode();
 
@@ -440,6 +468,19 @@ namespace AgentSimUnity
             GUILayout.Space(6);
         }
 
+        private void DemolishButton()
+        {
+            bool active = _mode == Mode.Demolish;
+            var bg = GUI.backgroundColor;
+            GUI.backgroundColor = active ? Color.red : new Color(0.55f, 0.20f, 0.20f, 1f);
+            if (GUILayout.Button("DEMOLISH"))
+            {
+                _mode = Mode.Demolish;
+                _zoneDragStart = null;
+            }
+            GUI.backgroundColor = bg;
+        }
+
         private void StructureButton(StructureType type)
         {
             bool active = _mode == Mode.PlaceStructure && _pendingStructureType == type;
@@ -461,6 +502,7 @@ namespace AgentSimUnity
                 Mode.PaintZone when _pendingZoneSector.HasValue =>
                     $"Painting: {_pendingZoneType} [{_pendingZoneSector}]  (drag rectangle, Esc to cancel)",
                 Mode.PaintZone => $"Painting: {_pendingZoneType}  (drag rectangle, Esc to cancel)",
+                Mode.Demolish => "DEMOLISH: click a structure to remove it  (Esc to cancel)",
                 _ => "",
             };
             // Sit just below the UI Toolkit top bar (height 56).

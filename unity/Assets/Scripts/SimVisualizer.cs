@@ -26,7 +26,12 @@ namespace AgentSimUnity
         private UnityTilemap _zoneTilemap = null!;
         private UnityTilemap _structureTilemap = null!;
         private UnityTilemap _landValueTilemap = null!;
+        private UnityTilemap _hoverTilemap = null!;
         private Tile _gridTile = null!;
+
+        // Hover highlight tracking.
+        private long? _lastHoveredStructureId;
+        private readonly HashSet<Vector3Int> _paintedHoverCells = new();
         private Grid _grid = null!;
 
         /// <summary>Toggle for the land-value heatmap overlay. HUD writes this.</summary>
@@ -68,6 +73,62 @@ namespace AgentSimUnity
         {
             HandleCameraControl();
             UpdateGridVisibility();
+            UpdateHoverHighlight();
+        }
+
+        // Warm-yellow translucent overlay on the footprint of whichever structure the mouse is
+        // over. Skipped while placement mode is active so it doesn't fight with the ghost.
+        private void UpdateHoverHighlight()
+        {
+            if (_bootstrap.Sim is null) return;
+
+            var placement = GetComponent<PlacementController>();
+            if (placement != null && placement.IsActive)
+            {
+                if (_lastHoveredStructureId.HasValue) ClearHoverPaint();
+                _lastHoveredStructureId = null;
+                return;
+            }
+
+            var hoveredId = ResolveHoveredStructureId();
+            if (hoveredId == _lastHoveredStructureId) return;
+
+            ClearHoverPaint();
+            if (hoveredId is long id) PaintHoverFor(id);
+            _lastHoveredStructureId = hoveredId;
+        }
+
+        private long? ResolveHoveredStructureId()
+        {
+            if (Mouse.current is null) return null;
+            var pos = Mouse.current.position.ReadValue();
+            if (pos.x < SidebarWidthPx) return null;
+            if (pos.y > Screen.height - TopBarHeightPx) return null;
+            var tile = MouseToTile(Camera.main);
+            if (tile is null) return null;
+            return _bootstrap.Sim!.State.Region.Tilemap.StructureAt(tile.Value.x, tile.Value.y);
+        }
+
+        private void ClearHoverPaint()
+        {
+            foreach (var c in _paintedHoverCells) _hoverTilemap.SetTile(c, null);
+            _paintedHoverCells.Clear();
+        }
+
+        private void PaintHoverFor(long structureId)
+        {
+            if (!_bootstrap.Sim!.State.City.Structures.TryGetValue(structureId, out var s)) return;
+            if (s.X < 0 || s.Y < 0) return;
+            var (w, h) = Footprint.For(s.Type);
+            var color = new Color(1f, 0.92f, 0.45f, 0.38f);
+            var tile = TileFor(color);
+            for (int dy = 0; dy < h; dy++)
+            for (int dx = 0; dx < w; dx++)
+            {
+                var cell = new Vector3Int(s.X + dx, s.Y + dy, 0);
+                _hoverTilemap.SetTile(cell, tile);
+                _paintedHoverCells.Add(cell);
+            }
         }
 
         // Hide the full-map grid background when each tile becomes too small to render its
@@ -77,17 +138,45 @@ namespace AgentSimUnity
         {
             var cam = Camera.main;
             if (cam == null || _backgroundTilemap == null) return;
-            float pxPerTile = Screen.height / (cam.orthographicSize * 2f);
+            float visibleHeightAtGround = cam.orthographic
+                ? cam.orthographicSize * 2f
+                : 2f * GroundDistance(cam) * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            float pxPerTile = Screen.height / visibleHeightAtGround;
             bool shouldShow = pxPerTile >= 12f;
             if (_backgroundTilemap.gameObject.activeSelf != shouldShow)
                 _backgroundTilemap.gameObject.SetActive(shouldShow);
         }
 
         // UI overlap constants — used to guard clicks/hovers that fall on HUD chrome.
-        // Camera remains full-screen; the sidebar and top bar visually obscure parts of the
-        // rendered map, but ScreenToWorldPoint still maps cursor → world correctly.
         private const float SidebarWidthPx = 220f;
         private const float TopBarHeightPx = 56f;
+        private const float CameraPitchDeg = 32f;
+        private const float CameraYawDeg = 35f;
+        private const float CameraFov = 50f;
+        private const float CameraInitialDistance = 140f;
+        private const float CameraMinDistanceToGround = 12f;
+        private const float CameraMaxDistanceToGround = 400f;
+        private const float PanDragMultiplier = 1.5f;  // mouse-drag amplification beyond pixel-exact
+
+        /// <summary>Raycast the mouse cursor onto the Y=0 ground plane (where the rotated
+        /// tilemap lives) and return the integer tile coords. Tile X = world X, tile Y = world Z
+        /// because the SimGrid is rotated +90° around X. Returns null if the ray misses the
+        /// plane or the result is off the map.</summary>
+        public static Vector3Int? MouseToTile(Camera cam)
+        {
+            if (cam == null) return null;
+            if (Mouse.current is null) return null;
+            var screen = Mouse.current.position.ReadValue();
+            var ray = cam.ScreenPointToRay(new Vector3(screen.x, screen.y, 0));
+            if (Mathf.Abs(ray.direction.y) < 1e-5f) return null;
+            float t = -ray.origin.y / ray.direction.y;
+            if (t < 0) return null;
+            var world = ray.origin + ray.direction * t;
+            int tx = Mathf.FloorToInt(world.x);
+            int ty = Mathf.FloorToInt(world.z);
+            if (tx < 0 || ty < 0 || tx >= SimTilemap.MapSize || ty >= SimTilemap.MapSize) return null;
+            return new Vector3Int(tx, ty, 0);
+        }
 
         void LateUpdate()
         {
@@ -124,11 +213,17 @@ namespace AgentSimUnity
 
         void OnGUI()
         {
-            if (!_selectedStructureId.HasValue) return;
             if (_bootstrap.Sim is null) return;
+
+            // Hover tooltip near cursor — only shown when we're hovering over something and
+            // nothing is selected (so it doesn't compete with the detail panel).
+            DrawHoverTooltip();
+
+            if (!_selectedStructureId.HasValue) return;
             if (!_bootstrap.Sim.State.City.Structures.TryGetValue(_selectedStructureId.Value, out var s)) return;
 
-            var rect = new Rect(Screen.width - 320, 10, 300, 180);
+            // Below top bar (56) + mode strip slot (24), right of sidebar (220).
+            var rect = new Rect(SidebarWidthPx + 10, 96, 320, 200);
             GUI.Box(rect, $"Structure #{s.Id}");
             GUILayout.BeginArea(new Rect(rect.x + 10, rect.y + 20, rect.width - 20, rect.height - 30));
             GUILayout.Label($"Type: {s.Type}");
@@ -142,6 +237,49 @@ namespace AgentSimUnity
             GUILayout.Label($"Jobs: {s.EmployeeIds.Count}/{s.JobSlotsTotal()}");
             if (GUILayout.Button("Close")) _selectedStructureId = null;
             GUILayout.EndArea();
+        }
+
+        // Lightweight tooltip floating next to the cursor — just type + status + jobs.
+        // Full detail comes from clicking (the detail panel above).
+        private void DrawHoverTooltip()
+        {
+            if (_selectedStructureId.HasValue) return;  // detail panel is showing
+            if (!_lastHoveredStructureId.HasValue) return;
+            if (!_bootstrap.Sim!.State.City.Structures.TryGetValue(_lastHoveredStructureId.Value, out var s)) return;
+            if (Mouse.current is null) return;
+
+            // Convert Input-System screen Y (origin bottom-left) to IMGUI Y (origin top-left).
+            var mp = Mouse.current.position.ReadValue();
+            float guiX = mp.x + 16f;
+            float guiY = Screen.height - mp.y + 16f;
+            var rect = new Rect(guiX, guiY, 220f, 78f);
+            // Clamp so the tooltip stays on-screen.
+            if (rect.x + rect.width > Screen.width) rect.x = Screen.width - rect.width - 4;
+            if (rect.y + rect.height > Screen.height) rect.y = Screen.height - rect.height - 4;
+            GUI.Box(rect, $"{s.Type} #{s.Id}");
+            GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 20, rect.width - 16, rect.height - 24));
+            string status = s.Inactive ? "INACTIVE"
+                          : s.UnderConstruction ? "building"
+                          : s.Operational ? "active" : "?";
+            GUILayout.Label($"Status: {status}");
+            if (s.Category == StructureCategory.Residential)
+            {
+                int residents = CountResidents(_bootstrap.Sim!.State, s.Id);
+                GUILayout.Label($"Residents: {residents}/{s.ResidentialCapacity}");
+            }
+            else
+            {
+                GUILayout.Label($"Jobs: {s.EmployeeIds.Count}/{s.JobSlotsTotal()}");
+            }
+            GUILayout.EndArea();
+        }
+
+        private static int CountResidents(SimState state, long structureId)
+        {
+            int n = 0;
+            foreach (var a in state.City.Agents.Values)
+                if (a.ResidenceStructureId == structureId) n++;
+            return n;
         }
 
         // ===== Setup =====
@@ -172,9 +310,12 @@ namespace AgentSimUnity
 
         private void BuildTilemaps()
         {
-            // Parent grid.
+            // Parent grid, rotated so the tilemap's XY plane becomes the world XZ ground plane.
+            // After rotation: tile (cx, cy) renders at world (cx, 0, cy). Sprites face +Y (up),
+            // so the camera looks down at them.
             var gridGo = new GameObject("SimGrid");
             gridGo.transform.SetParent(transform, worldPositionStays: false);
+            gridGo.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
             _grid = gridGo.AddComponent<Grid>();
             _grid.cellSize = new Vector3(1f, 1f, 0f);
 
@@ -182,6 +323,7 @@ namespace AgentSimUnity
             _zoneTilemap = MakeTilemap(gridGo.transform, "Zones", sortingOrder: 0);
             _structureTilemap = MakeTilemap(gridGo.transform, "Structures", sortingOrder: 1);
             _landValueTilemap = MakeTilemap(gridGo.transform, "LandValue", sortingOrder: 2);
+            _hoverTilemap = MakeTilemap(gridGo.transform, "Hover", sortingOrder: 3);
         }
 
         private void BuildGridTile()
@@ -238,9 +380,17 @@ namespace AgentSimUnity
                 camGo.tag = "MainCamera";
                 cam = camGo.AddComponent<Camera>();
             }
-            cam.orthographic = true;
-            cam.orthographicSize = 36f;  // ~72 tiles tall — gives room to see the zone plus surroundings
-            cam.transform.position = new Vector3(28f, 28f, -10f);
+            // Perspective camera for real 3D feel: distant tiles get smaller (vanishing point).
+            cam.orthographic = false;
+            cam.fieldOfView = CameraFov;
+            cam.nearClipPlane = 0.5f;
+            cam.farClipPlane = 600f;
+
+            // Isometric-ish: pitch down + yaw 45°, looking down at the ground (Y=0).
+            cam.transform.rotation = Quaternion.Euler(CameraPitchDeg, CameraYawDeg, 0f);
+            var target = new Vector3(16f, 0f, 16f);
+            cam.transform.position = target - cam.transform.forward * CameraInitialDistance;
+            Debug.Log($"[SimVisualizer] Camera (perspective) pitch={CameraPitchDeg}° yaw={CameraYawDeg}° fov={CameraFov}, position={cam.transform.position}, rotation={cam.transform.rotation.eulerAngles}");
             cam.backgroundColor = new Color(0.05f, 0.06f, 0.08f);
             cam.clearFlags = CameraClearFlags.SolidColor;
         }
@@ -251,17 +401,46 @@ namespace AgentSimUnity
             var cam = Camera.main;
             if (cam == null) return;
 
+            // Build pan axes parallel to the ground plane: right is purely horizontal already
+            // (no pitch in the right vector); forward needs its Y zeroed out so panning doesn't
+            // change camera altitude.
+            Vector3 panRight = cam.transform.right;
+            Vector3 panForward = cam.transform.forward;
+            panForward.y = 0;
+            if (panForward.sqrMagnitude > 1e-6f) panForward.Normalize();
+
+            // World units per screen pixel at the ground plane — used to size both keyboard
+            // pan and mouse-drag pan so feel is consistent under any zoom.
+            float groundDistance = GroundDistance(cam);
+            float worldPerPixel = (2f * groundDistance * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad))
+                                  / Screen.height;
+
             if (Keyboard.current is not null)
             {
-                Vector3 move = Vector3.zero;
-                if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) move.x -= 1f;
-                if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) move.x += 1f;
-                if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) move.y -= 1f;
-                if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) move.y += 1f;
-                if (move != Vector3.zero)
+                Vector2 input = Vector2.zero;
+                if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) input.x -= 1f;
+                if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) input.x += 1f;
+                if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) input.y -= 1f;
+                if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) input.y += 1f;
+                if (input != Vector2.zero)
                 {
-                    float panSpeed = cam.orthographicSize * 2f;
-                    cam.transform.position += move.normalized * Time.deltaTime * panSpeed;
+                    Vector3 worldMove = input.x * panRight + input.y * panForward;
+                    float panSpeed = groundDistance * 2.5f;  // larger view → faster pan, feels stable
+                    cam.transform.position += worldMove.normalized * Time.deltaTime * panSpeed;
+                }
+
+                // Orbit: Q/E yaw, R/F pitch. Camera revolves around the ground point it's
+                // currently looking at, so the user's focus stays anchored.
+                float yawDelta = 0f, pitchDelta = 0f;
+                if (Keyboard.current.qKey.isPressed) yawDelta -= 1f;
+                if (Keyboard.current.eKey.isPressed) yawDelta += 1f;
+                if (Keyboard.current.rKey.isPressed) pitchDelta -= 1f;
+                if (Keyboard.current.fKey.isPressed) pitchDelta += 1f;
+                if (yawDelta != 0f || pitchDelta != 0f)
+                {
+                    float orbitSpeed = 60f;  // deg/sec
+                    OrbitCamera(cam, yawDelta * orbitSpeed * Time.deltaTime,
+                                     pitchDelta * orbitSpeed * Time.deltaTime);
                 }
             }
 
@@ -270,27 +449,118 @@ namespace AgentSimUnity
                 float scroll = Mouse.current.scroll.ReadValue().y;
                 if (Mathf.Abs(scroll) > 0.01f)
                 {
-                    // ~60% zoom per scroll notch (Input System reports ~120 per notch).
-                    float factor = 1f - scroll * 0.005f;
-                    cam.orthographicSize = Mathf.Clamp(cam.orthographicSize * factor, 6f, 128f);
+                    // Dolly along forward, capped per-frame so a wheel burst doesn't fly the
+                    // camera past min/max distance. Magnitude is fraction-of-distance — 40%
+                    // closer/further per cap, gives strong zoom without being uncontrollable.
+                    float dollyDelta = Mathf.Clamp(scroll * 0.12f, -0.4f, 0.4f);
+                    var newPos = cam.transform.position + cam.transform.forward * dollyDelta * groundDistance;
+                    if (Mathf.Abs(cam.transform.forward.y) > 1e-5f)
+                    {
+                        float newDistance = -newPos.y / cam.transform.forward.y;
+                        if (newDistance >= CameraMinDistanceToGround && newDistance <= CameraMaxDistanceToGround)
+                            cam.transform.position = newPos;
+                    }
                 }
 
-                // Middle-mouse drag pan + right-mouse drag pan. Either button works — city-
-                // builder convention. Movement is in world units, scaled by ortho size so a
-                // 100-pixel drag covers a consistent fraction of the view at any zoom.
-                bool dragging = Mouse.current.middleButton.isPressed
-                                || Mouse.current.rightButton.isPressed;
-                if (dragging)
+                bool shiftHeld = Keyboard.current is not null && Keyboard.current.shiftKey.isPressed;
+                bool panDragging = Mouse.current.rightButton.isPressed
+                                   || (Mouse.current.middleButton.isPressed && shiftHeld);
+                bool orbitDragging = Mouse.current.middleButton.isPressed && !shiftHeld;
+
+                if (panDragging)
+                {
+                    // Base motion is pixel-exact ground-raycast tracking. PanDragMultiplier
+                    // amplifies it slightly so short drags cover more world.
+                    var delta = Mouse.current.delta.ReadValue();
+                    if (delta.sqrMagnitude > 0)
+                    {
+                        var now = Mouse.current.position.ReadValue();
+                        var before = now - delta;
+                        if (TryRaycastGround(cam, before, out var wOld)
+                            && TryRaycastGround(cam, now, out var wNew))
+                        {
+                            var move = (wOld - wNew) * PanDragMultiplier;
+                            move.y = 0;
+                            cam.transform.position += move;
+                        }
+                    }
+                }
+                else if (orbitDragging)
                 {
                     var delta = Mouse.current.delta.ReadValue();
-                    // pixels → world: multiply by (worldHeight / screenHeight).
-                    float worldPerPixelY = (cam.orthographicSize * 2f) / Screen.height;
-                    cam.transform.position += new Vector3(
-                        -delta.x * worldPerPixelY,
-                        -delta.y * worldPerPixelY,
-                        0f);
+                    const float orbitSensitivity = 0.25f;
+                    float yawDelta = delta.x * orbitSensitivity;
+                    float pitchDelta = -delta.y * orbitSensitivity;
+                    if (yawDelta != 0f || pitchDelta != 0f)
+                        OrbitCamera(cam, yawDelta, pitchDelta);
                 }
             }
+        }
+
+        // Ray-cast a screen point onto the Y=0 ground plane. Returns true and the hit world
+        // point, or false if the ray misses (parallel to plane or pointing wrong direction).
+        private static bool TryRaycastGround(Camera cam, Vector2 screen, out Vector3 hit)
+        {
+            hit = default;
+            var ray = cam.ScreenPointToRay(new Vector3(screen.x, screen.y, 0));
+            if (Mathf.Abs(ray.direction.y) < 1e-5f) return false;
+            float t = -ray.origin.y / ray.direction.y;
+            if (t < 0) return false;
+            hit = ray.origin + ray.direction * t;
+            return true;
+        }
+
+        // Distance from the camera to the ground plane (Y=0) measured along its forward axis.
+        // Returns CameraInitialDistance when forward is parallel to the ground (shouldn't happen).
+        private static float GroundDistance(Camera cam)
+        {
+            float fy = cam.transform.forward.y;
+            if (Mathf.Abs(fy) < 1e-5f) return CameraInitialDistance;
+            return Mathf.Max(1f, -cam.transform.position.y / fy);
+        }
+
+        // Rotate the camera around the point on the ground it's currently looking at. Yaw is
+        // applied around world Y, pitch around the camera's local right axis. Pitch is clamped
+        // so the camera never goes below horizontal or fully overhead.
+        private const float MinPitchDeg = 15f;
+        private const float MaxPitchDeg = 80f;
+        private static void OrbitCamera(Camera cam, float yawDeltaDeg, float pitchDeltaDeg)
+        {
+            // Find current ground target along forward axis.
+            float fy = cam.transform.forward.y;
+            if (Mathf.Abs(fy) < 1e-5f) return;
+            float t = -cam.transform.position.y / fy;
+            if (t < 0) return;
+            Vector3 target = cam.transform.position + cam.transform.forward * t;
+
+            // Clamp pitch delta so the resulting pitch stays in [MinPitchDeg, MaxPitchDeg].
+            // forward.y = -sin(pitch), so pitch = asin(-forward.y).
+            if (pitchDeltaDeg != 0f)
+            {
+                float currentPitch = Mathf.Asin(Mathf.Clamp(-fy, -1f, 1f)) * Mathf.Rad2Deg;
+                float newPitch = Mathf.Clamp(currentPitch + pitchDeltaDeg, MinPitchDeg, MaxPitchDeg);
+                pitchDeltaDeg = newPitch - currentPitch;
+            }
+
+            Vector3 offset = cam.transform.position - target;
+
+            // Yaw: rotate around world up.
+            if (yawDeltaDeg != 0f)
+            {
+                var yawRot = Quaternion.AngleAxis(yawDeltaDeg, Vector3.up);
+                offset = yawRot * offset;
+                cam.transform.rotation = yawRot * cam.transform.rotation;
+            }
+
+            // Pitch: rotate around the camera's local right axis (now updated by yaw).
+            if (pitchDeltaDeg != 0f)
+            {
+                var pitchRot = Quaternion.AngleAxis(pitchDeltaDeg, cam.transform.right);
+                offset = pitchRot * offset;
+                cam.transform.rotation = pitchRot * cam.transform.rotation;
+            }
+
+            cam.transform.position = target + offset;
         }
 
         private Tile TileFor(Color color)
@@ -417,12 +687,9 @@ namespace AgentSimUnity
             if (placement != null && mousePos.x < SidebarWidthPx) return;
             if (mousePos.y > Screen.height - TopBarHeightPx) return;
 
-            var cam = Camera.main;
-            if (cam == null) return;
-            var world = cam.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0f));
-            int tx = Mathf.FloorToInt(world.x);
-            int ty = Mathf.FloorToInt(world.y);
-            _selectedStructureId = _bootstrap.Sim?.State.Region.Tilemap.StructureAt(tx, ty);
+            var tile = MouseToTile(Camera.main);
+            if (tile is null) return;
+            _selectedStructureId = _bootstrap.Sim?.State.Region.Tilemap.StructureAt(tile.Value.x, tile.Value.y);
         }
 
         // ===== Color tables =====

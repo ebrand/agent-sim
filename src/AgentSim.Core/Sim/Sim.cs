@@ -515,6 +515,53 @@ public sealed class Sim
     }
 
     /// <summary>
+    /// Remove a structure from the city. Clears the tilemap footprint, drops references from
+    /// agents (employer / residence / enrollment), removes from the parent zone's structure
+    /// list, removes from the owning HQ's owned list, and recomputes land value. Industrial
+    /// chains owned by a demolished HQ are NOT cascaded — they stay but are orphaned (their
+    /// OwnerHqId now points at a deleted structure; mechanics that look it up should handle
+    /// that gracefully). No construction-cost refund.
+    /// </summary>
+    public void RemoveStructure(long structureId)
+    {
+        if (!State.City.Structures.TryGetValue(structureId, out var s))
+            throw new ArgumentException($"Structure {structureId} not found", nameof(structureId));
+
+        // Clear tilemap footprint.
+        if (s.X >= 0 && s.Y >= 0)
+        {
+            var (w, h) = Footprint.For(s.Type);
+            State.Region.Tilemap.ClearStructureFootprint(s.X, s.Y, w, h);
+        }
+
+        // Drop agent references — agents will find new jobs / residences via normal mechanics.
+        foreach (var agent in State.City.Agents.Values)
+        {
+            if (agent.EmployerStructureId == structureId) agent.EmployerStructureId = null;
+            if (agent.ResidenceStructureId == structureId) agent.ResidenceStructureId = null;
+            if (agent.EnrolledStructureId == structureId) agent.EnrolledStructureId = null;
+        }
+
+        // Remove from parent zone.
+        if (s.ZoneId != 0 && State.City.Zones.TryGetValue(s.ZoneId, out var zone))
+        {
+            zone.StructureIds.Remove(structureId);
+        }
+
+        // Remove from owning HQ.
+        if (s.OwnerHqId is long ownerId
+            && State.City.Structures.TryGetValue(ownerId, out var hq))
+        {
+            hq.OwnedStructureIds.Remove(structureId);
+        }
+
+        State.City.Structures.Remove(structureId);
+        Mechanics.LandValueMechanic.RunMonthly(State);
+        State.LogEvent(SimEventSeverity.Info, "Demolition",
+            $"Removed {s.Type} #{s.Id} at ({s.X},{s.Y})");
+    }
+
+    /// <summary>
     /// Advance the simulation by N ticks (days).
     /// Per `time-and-pacing.md`, each tick:
     ///   1. Increment tick counter

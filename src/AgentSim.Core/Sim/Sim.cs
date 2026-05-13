@@ -58,19 +58,49 @@ public sealed class Sim
     }
 
     /// <summary>
-    /// Create a residential zone. Triggers the bootstrap settler burst on first call.
+    /// Create a residential zone with explicit spatial bounds. Triggers the bootstrap settler
+    /// burst on first call.
     /// </summary>
+    public Zone CreateResidentialZone(ZoneBounds bounds, int structureCapacity = 20)
+        => CreateZone(ZoneType.Residential, sector: null, bounds, structureCapacity);
+
+    /// <summary>Legacy: auto-allocate bounds when none provided. Picks a 16×16 area.</summary>
     public Zone CreateResidentialZone(int structureCapacity = 20)
+        => CreateZone(ZoneType.Residential, sector: null, bounds: null, structureCapacity);
+
+    /// <summary>
+    /// Create a commercial zone tagged with a sector + explicit bounds. Auto-spawned shops in
+    /// this zone serve the given sector; manually placed structures ignore the sector tag.
+    /// </summary>
+    public Zone CreateCommercialZone(CommercialSector sector, ZoneBounds bounds, int structureCapacity = 10)
+        => CreateZone(ZoneType.Commercial, sector, bounds, structureCapacity);
+
+    /// <summary>Legacy: auto-allocate bounds.</summary>
+    public Zone CreateCommercialZone(CommercialSector sector, int structureCapacity = 10)
+        => CreateZone(ZoneType.Commercial, sector, bounds: null, structureCapacity);
+
+    /// <summary>Legacy: sector-less commercial zone with auto bounds.</summary>
+    public Zone CreateCommercialZone(int structureCapacity = 10)
+        => CreateZone(ZoneType.Commercial, sector: null, bounds: null, structureCapacity);
+
+    /// <summary>Shared zone-creation path. If bounds is null, auto-allocates a 16×16 area on the
+    /// first free spot. Marks the tilemap so future placements can validate against zone.</summary>
+    private Zone CreateZone(ZoneType type, CommercialSector? sector, ZoneBounds? bounds, int structureCapacity)
     {
+        var effectiveBounds = bounds ?? AllocateZoneBounds(width: 16, height: 16);
         var zone = new Zone
         {
             Id = State.AllocateZoneId(),
-            Type = ZoneType.Residential,
+            Type = type,
             StructureCapacity = structureCapacity,
+            Sector = sector,
+            Bounds = effectiveBounds,
         };
         State.City.Zones[zone.Id] = zone;
+        State.Region.Tilemap.SetZoneArea(zone.Id, effectiveBounds.X, effectiveBounds.Y,
+            effectiveBounds.Width, effectiveBounds.Height);
 
-        if (!State.BootstrapFired)
+        if (type == ZoneType.Residential && !State.BootstrapFired)
         {
             BootstrapMechanic.Fire(State, zone);
             State.BootstrapFired = true;
@@ -79,37 +109,73 @@ public sealed class Sim
         return zone;
     }
 
-    /// <summary>
-    /// Create a commercial zone tagged with a sector. Auto-spawned shops in this zone serve the
-    /// given sector; manually placed structures (e.g., CorporateHq) ignore the sector tag.
-    /// </summary>
-    public Zone CreateCommercialZone(CommercialSector sector, int structureCapacity = 10)
+    /// <summary>Find a free area for a new zone of the given size. Falls back to (0,0) if scan
+    /// fails (shouldn't happen on a 256×256 map).</summary>
+    private ZoneBounds AllocateZoneBounds(int width, int height)
     {
-        var zone = new Zone
+        // Scan map for an area not yet zoned and not occupied by structures.
+        var tm = State.Region.Tilemap;
+        for (int y = 0; y <= Tilemap.MapSize - height; y++)
+        for (int x = 0; x <= Tilemap.MapSize - width; x++)
         {
-            Id = State.AllocateZoneId(),
-            Type = ZoneType.Commercial,
-            StructureCapacity = structureCapacity,
-            Sector = sector,
-        };
-        State.City.Zones[zone.Id] = zone;
-        return zone;
+            if (IsAreaUnzoned(tm, x, y, width, height)) return new ZoneBounds(x, y, width, height);
+        }
+        return new ZoneBounds(0, 0, width, height);
     }
 
-    /// <summary>
-    /// Legacy commercial-zone API for tests / scenarios that don't need sector-typed auto-spawn
-    /// (e.g., HQ-only zones, or where structures will be placed manually with their own sector tag).
-    /// </summary>
-    public Zone CreateCommercialZone(int structureCapacity = 10)
+    private static bool IsAreaUnzoned(Tilemap tm, int x, int y, int w, int h)
     {
-        var zone = new Zone
+        for (int dy = 0; dy < h; dy++)
+        for (int dx = 0; dx < w; dx++)
         {
-            Id = State.AllocateZoneId(),
-            Type = ZoneType.Commercial,
-            StructureCapacity = structureCapacity,
-        };
-        State.City.Zones[zone.Id] = zone;
-        return zone;
+            if (tm.ZoneAt(x + dx, y + dy) is not null) return false;
+            if (tm.StructureAt(x + dx, y + dy) is not null) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Set the structure's position (X, Y) and mark the tilemap. Throws if the spot is
+    /// invalid (out of bounds, overlapping, or — for zoned structures — not in the right zone).
+    /// If x or y is null, auto-picks: zoned structures fit within their zone, non-zoned anywhere.</summary>
+    private void PlaceSpatial(Structure structure, int? x = null, int? y = null)
+    {
+        var (w, h) = Footprint.For(structure.Type);
+        var tm = State.Region.Tilemap;
+
+        (int X, int Y) pos;
+        if (x.HasValue && y.HasValue)
+        {
+            if (!tm.IsAreaFree(x.Value, y.Value, w, h))
+                throw new InvalidOperationException(
+                    $"Cannot place {structure.Type} at ({x.Value},{y.Value}): tiles not free.");
+            if (Footprint.IsZoned(structure.Type) && structure.ZoneId != 0
+                && !tm.AreaInZone(x.Value, y.Value, w, h, structure.ZoneId))
+                throw new InvalidOperationException(
+                    $"{structure.Type} at ({x.Value},{y.Value}) is not entirely within zone {structure.ZoneId}.");
+            pos = (x.Value, y.Value);
+        }
+        else
+        {
+            (int X, int Y)? spot;
+            if (Footprint.IsZoned(structure.Type) && structure.ZoneId != 0
+                && State.City.Zones.TryGetValue(structure.ZoneId, out var zone)
+                && zone.Bounds is ZoneBounds zb)
+            {
+                spot = tm.FindFreeSpotInZone(zone.Id, zb, w, h);
+            }
+            else
+            {
+                spot = tm.FindFreeSpotAnywhere(w, h);
+            }
+            if (spot is null)
+                throw new InvalidOperationException(
+                    $"No free tile for {structure.Type} (footprint {w}×{h}).");
+            pos = spot.Value;
+        }
+
+        structure.X = pos.X;
+        structure.Y = pos.Y;
+        tm.SetStructureFootprint(structure.Id, pos.X, pos.Y, w, h);
     }
 
     /// <summary>
@@ -156,6 +222,7 @@ public sealed class Sim
             OwnerHqId = ownerHqId,
         };
         State.City.Structures[structure.Id] = structure;
+        PlaceSpatial(structure);
         hq.OwnedStructureIds.Add(structure.Id);
         return structure;
     }
@@ -190,6 +257,7 @@ public sealed class Sim
         };
         foreach (var sector in recipe.Sectors) structure.ManufacturerSectors.Add(sector);
         State.City.Structures[structure.Id] = structure;
+        PlaceSpatial(structure);
         return structure;
     }
 
@@ -256,6 +324,7 @@ public sealed class Sim
             RequiredConstructionTicks = Defaults.Residential.BuildDurationTicks,
         };
         State.City.Structures[structure.Id] = structure;
+        PlaceSpatial(structure);
         zone.StructureIds.Add(structure.Id);
         return structure;
     }
@@ -316,6 +385,7 @@ public sealed class Sim
             CashBalance = Defaults.Industry.StartingCashFor(industry),
         };
         State.City.Structures[structure.Id] = structure;
+        PlaceSpatial(structure);
         zone.StructureIds.Add(structure.Id);
         return structure;
     }
@@ -348,6 +418,7 @@ public sealed class Sim
             JobSlots = Defaults.CivicEmployment.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
         };
         State.City.Structures[structure.Id] = structure;
+        PlaceSpatial(structure);
         return structure;
     }
 
@@ -380,6 +451,7 @@ public sealed class Sim
             JobSlots = Defaults.CivicEmployment.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
         };
         State.City.Structures[structure.Id] = structure;
+        PlaceSpatial(structure);
         return structure;
     }
 
@@ -413,6 +485,7 @@ public sealed class Sim
             Sector = sector,
         };
         State.City.Structures[structure.Id] = structure;
+        PlaceSpatial(structure);
         zone.StructureIds.Add(structure.Id);
         return structure;
     }

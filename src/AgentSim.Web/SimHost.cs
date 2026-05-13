@@ -92,7 +92,7 @@ public sealed class SimHost : IDisposable
             var structures = new List<StructureDto>();
             foreach (var s in state.City.Structures.Values)
             {
-                if (s.Category == StructureCategory.Residential) continue;  // skip houses for list brevity
+                var (w, h) = Footprint.For(s.Type);
                 structures.Add(new StructureDto
                 {
                     Id = s.Id,
@@ -108,6 +108,10 @@ public sealed class SimHost : IDisposable
                     JobSlots = s.JobSlots.Values.Sum(),
                     MonthlyRevenue = s.MonthlyRevenue,
                     MonthlyExpenses = s.MonthlyExpenses,
+                    X = s.X,
+                    Y = s.Y,
+                    W = w,
+                    H = h,
                 });
             }
 
@@ -265,4 +269,8 @@ public sealed class StructureDto
     public required int JobSlots { get; init; }
     public required int MonthlyRevenue { get; init; }
     public required int MonthlyExpenses { get; init; }
+    public required int X { get; init; }
+    public required int Y { get; init; }
+    public required int W { get; init; }
+    public required int H { get; init; }
 }

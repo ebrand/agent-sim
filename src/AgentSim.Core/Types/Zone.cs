@@ -20,4 +20,8 @@ public sealed class Zone
     /// tagged with this sector. Null for residential zones.
     /// </summary>
     public CommercialSector? Sector { get; init; }
+
+    /// <summary>Spatial bounds of the zone on the tile grid (bottom-left + width × height).
+    /// Null for zones created via the legacy API without bounds (auto-default applies).</summary>
+    public ZoneBounds? Bounds { get; init; }
 }

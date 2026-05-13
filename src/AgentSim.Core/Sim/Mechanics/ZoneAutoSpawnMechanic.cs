@@ -134,6 +134,11 @@ public static class ZoneAutoSpawnMechanic
 
     private static void SpawnFree(SimState state, Zone zone, StructureType type, SpawnInit init)
     {
+        var (w, h) = Footprint.For(type);
+        if (zone.Bounds is not ZoneBounds zb) return;
+        var spot = state.Region.Tilemap.FindFreeSpotInZone(zone.Id, zb, w, h);
+        if (spot is null) return;  // zone full at this size — caller will retry later
+
         var structure = new Structure
         {
             Id = state.AllocateStructureId(),
@@ -144,8 +149,11 @@ public static class ZoneAutoSpawnMechanic
             RequiredConstructionTicks = init.RequiredConstructionTicks,
             JobSlots = init.JobSlots ?? new Dictionary<EducationTier, int>(),
             Sector = init.Sector,
+            X = spot.Value.X,
+            Y = spot.Value.Y,
         };
         state.City.Structures[structure.Id] = structure;
+        state.Region.Tilemap.SetStructureFootprint(structure.Id, spot.Value.X, spot.Value.Y, w, h);
         zone.StructureIds.Add(structure.Id);
     }
 }

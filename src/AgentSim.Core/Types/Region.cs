@@ -11,6 +11,9 @@ public sealed class Region
     public required double Nature { get; set; }
 
     public AgentReservoir AgentReservoir { get; } = new();
+
+    /// <summary>Spatial layer: 256×256 tile grid tracking structure footprints and zone areas.</summary>
+    public Tilemap Tilemap { get; } = new();
 }
 
 /// <summary>

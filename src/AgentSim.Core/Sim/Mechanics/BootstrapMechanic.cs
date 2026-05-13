@@ -43,6 +43,17 @@ public static class BootstrapMechanic
             RequiredConstructionTicks = Residential.BuildDurationTicks,
         };
         state.City.Structures[house.Id] = house;
+        // Place at first free 1×1 tile within the zone.
+        if (zone.Bounds is ZoneBounds zb)
+        {
+            var spot = state.Region.Tilemap.FindFreeSpotInZone(zone.Id, zb, 1, 1);
+            if (spot is not null)
+            {
+                house.X = spot.Value.X;
+                house.Y = spot.Value.Y;
+                state.Region.Tilemap.SetStructureFootprint(house.Id, spot.Value.X, spot.Value.Y, 1, 1);
+            }
+        }
         zone.StructureIds.Add(house.Id);
         return house;
     }

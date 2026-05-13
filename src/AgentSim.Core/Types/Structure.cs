@@ -9,6 +9,11 @@ public sealed class Structure
     public required StructureType Type { get; init; }
     public required long ZoneId { get; init; }
 
+    /// <summary>Bottom-left tile position on the city map. Width × Height derived from
+    /// Footprint.For(Type). -1 means unplaced (legacy / pre-spatial code).</summary>
+    public int X { get; set; } = -1;
+    public int Y { get; set; } = -1;
+
     /// <summary>
     /// Construction progress in ticks. When equal to required build duration, the structure is operational.
     /// </summary>

@@ -67,6 +67,20 @@ namespace AgentSimUnity
         void Update()
         {
             HandleCameraControl();
+            UpdateGridVisibility();
+        }
+
+        // Hide the full-map grid background when each tile becomes too small to render its
+        // 1-pixel border cleanly — that's when the borders alias against screen pixels and
+        // produce a moiré pattern. Threshold: ~12 screen pixels per tile.
+        private void UpdateGridVisibility()
+        {
+            var cam = Camera.main;
+            if (cam == null || _backgroundTilemap == null) return;
+            float pxPerTile = Screen.height / (cam.orthographicSize * 2f);
+            bool shouldShow = pxPerTile >= 12f;
+            if (_backgroundTilemap.gameObject.activeSelf != shouldShow)
+                _backgroundTilemap.gameObject.SetActive(shouldShow);
         }
 
         // UI overlap constants — used to guard clicks/hovers that fall on HUD chrome.
@@ -172,13 +186,13 @@ namespace AgentSimUnity
 
         private void BuildGridTile()
         {
-            // Transparent-fill, dark-bordered tile painted on every cell of the map so the
-            // 256×256 grid is visible everywhere (not just on zoned/structured tiles).
-            const int size = 16;
+            // 32×32 texture with a 1-pixel border: at typical zooms the border is sub-pixel
+            // and renders as a thin hairline. Low alpha keeps it from dominating.
+            const int size = 32;
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
             tex.filterMode = FilterMode.Point;
             var pixels = new Color32[size * size];
-            var border = new Color32(50, 55, 70, 140);   // muted dark-blue, semi-transparent
+            var border = new Color32(60, 65, 80, 90);
             var transparent = new Color32(0, 0, 0, 0);
             for (int y = 0; y < size; y++)
             for (int x = 0; x < size; x++)
@@ -188,6 +202,7 @@ namespace AgentSimUnity
             }
             tex.SetPixels32(pixels);
             tex.Apply();
+            // pixelsPerUnit = size so the sprite still spans one world unit.
             var sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
             sprite.name = "GridTile";
             _gridTile = ScriptableObject.CreateInstance<Tile>();
@@ -224,8 +239,8 @@ namespace AgentSimUnity
                 cam = camGo.AddComponent<Camera>();
             }
             cam.orthographic = true;
-            cam.orthographicSize = 16f;  // ~32 tiles tall — fits the default bootstrap zone
-            cam.transform.position = new Vector3(16f, 16f, -10f);
+            cam.orthographicSize = 36f;  // ~72 tiles tall — gives room to see the zone plus surroundings
+            cam.transform.position = new Vector3(28f, 28f, -10f);
             cam.backgroundColor = new Color(0.05f, 0.06f, 0.08f);
             cam.clearFlags = CameraClearFlags.SolidColor;
         }
@@ -255,7 +270,8 @@ namespace AgentSimUnity
                 float scroll = Mouse.current.scroll.ReadValue().y;
                 if (Mathf.Abs(scroll) > 0.01f)
                 {
-                    float factor = 1f - scroll * 0.001f;  // Input System scroll is ~120 per notch
+                    // ~60% zoom per scroll notch (Input System reports ~120 per notch).
+                    float factor = 1f - scroll * 0.005f;
                     cam.orthographicSize = Mathf.Clamp(cam.orthographicSize * factor, 6f, 128f);
                 }
 

@@ -1,9 +1,22 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net10.0;netstandard2.1</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <!--
+    After building the netstandard2.1 target, copy the DLL into Unity's plugin folder so Unity
+    picks up the latest sim code on its next domain reload. Skipped in CI / non-developer
+    contexts via the CopyToUnityPlugins property.
+  -->
+  <Target Name="CopyToUnityPlugins" AfterTargets="Build"
+          Condition="'$(TargetFramework)' == 'netstandard2.1' AND '$(CopyToUnityPlugins)' != 'false'">
+    <Copy SourceFiles="$(OutputPath)AgentSim.Core.dll"
+          DestinationFolder="$(MSBuildThisFileDirectory)..\..\unity\Assets\Plugins\AgentSim\"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

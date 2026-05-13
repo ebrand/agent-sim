@@ -74,7 +74,7 @@ public static class ImmigrationMechanic
             var resTotal = state.Region.AgentReservoir.Total;
             if (resTotal > 0)
             {
-                foreach (EducationTier tier in Enum.GetValues<EducationTier>())
+                foreach (EducationTier tier in (EducationTier[])Enum.GetValues(typeof(EducationTier)))
                 {
                     var tierReservoir = state.Region.AgentReservoir.Get(tier);
                     if (tierReservoir <= 0) continue;

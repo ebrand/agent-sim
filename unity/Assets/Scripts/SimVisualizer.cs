@@ -22,9 +22,11 @@ namespace AgentSimUnity
     public class SimVisualizer : MonoBehaviour
     {
         private SimBootstrap _bootstrap = null!;
+        private UnityTilemap _backgroundTilemap = null!;
         private UnityTilemap _zoneTilemap = null!;
         private UnityTilemap _structureTilemap = null!;
         private UnityTilemap _landValueTilemap = null!;
+        private Tile _gridTile = null!;
         private Grid _grid = null!;
 
         /// <summary>Toggle for the land-value heatmap overlay. HUD writes this.</summary>
@@ -56,7 +58,9 @@ namespace AgentSimUnity
         {
             _bootstrap = GetComponent<SimBootstrap>();
             BuildSpriteAsset();
+            BuildGridTile();
             BuildTilemaps();
+            PaintGridBackground();
             SetupCamera();
         }
 
@@ -130,11 +134,25 @@ namespace AgentSimUnity
 
         private void BuildSpriteAsset()
         {
-            _whiteTex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-            _whiteTex.SetPixel(0, 0, Color.white);
+            // 16×16 sprite with a 1-pixel darker border so each tile has a visible edge.
+            // Tinting via tile.color still works — the border becomes a darker shade of
+            // whatever color the tile is set to.
+            const int size = 16;
+            _whiteTex = new Texture2D(size, size, TextureFormat.RGBA32, false);
             _whiteTex.filterMode = FilterMode.Point;
+            var pixels = new Color32[size * size];
+            var inner = new Color32(255, 255, 255, 255);
+            var border = new Color32(70, 70, 70, 255);
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                bool isBorder = x == 0 || y == 0 || x == size - 1 || y == size - 1;
+                pixels[y * size + x] = isBorder ? border : inner;
+            }
+            _whiteTex.SetPixels32(pixels);
             _whiteTex.Apply();
-            _whiteSprite = Sprite.Create(_whiteTex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1f);
+            // pixelsPerUnit = size so the 16×16 sprite spans exactly 1 world unit (1 tile).
+            _whiteSprite = Sprite.Create(_whiteTex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
             _whiteSprite.name = "WhiteTile";
         }
 
@@ -146,9 +164,44 @@ namespace AgentSimUnity
             _grid = gridGo.AddComponent<Grid>();
             _grid.cellSize = new Vector3(1f, 1f, 0f);
 
+            _backgroundTilemap = MakeTilemap(gridGo.transform, "Background", sortingOrder: -10);
             _zoneTilemap = MakeTilemap(gridGo.transform, "Zones", sortingOrder: 0);
             _structureTilemap = MakeTilemap(gridGo.transform, "Structures", sortingOrder: 1);
             _landValueTilemap = MakeTilemap(gridGo.transform, "LandValue", sortingOrder: 2);
+        }
+
+        private void BuildGridTile()
+        {
+            // Transparent-fill, dark-bordered tile painted on every cell of the map so the
+            // 256×256 grid is visible everywhere (not just on zoned/structured tiles).
+            const int size = 16;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            tex.filterMode = FilterMode.Point;
+            var pixels = new Color32[size * size];
+            var border = new Color32(50, 55, 70, 140);   // muted dark-blue, semi-transparent
+            var transparent = new Color32(0, 0, 0, 0);
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                bool isBorder = x == 0 || y == 0 || x == size - 1 || y == size - 1;
+                pixels[y * size + x] = isBorder ? border : transparent;
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply();
+            var sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
+            sprite.name = "GridTile";
+            _gridTile = ScriptableObject.CreateInstance<Tile>();
+            _gridTile.sprite = sprite;
+            _gridTile.color = Color.white;
+        }
+
+        private void PaintGridBackground()
+        {
+            int n = SimTilemap.MapSize;
+            var bounds = new BoundsInt(0, 0, 0, n, n, 1);
+            var tiles = new TileBase[n * n];
+            for (int i = 0; i < tiles.Length; i++) tiles[i] = _gridTile;
+            _backgroundTilemap.SetTilesBlock(bounds, tiles);
         }
 
         private static UnityTilemap MakeTilemap(Transform parent, string name, int sortingOrder)
@@ -204,6 +257,22 @@ namespace AgentSimUnity
                 {
                     float factor = 1f - scroll * 0.001f;  // Input System scroll is ~120 per notch
                     cam.orthographicSize = Mathf.Clamp(cam.orthographicSize * factor, 6f, 128f);
+                }
+
+                // Middle-mouse drag pan + right-mouse drag pan. Either button works — city-
+                // builder convention. Movement is in world units, scaled by ortho size so a
+                // 100-pixel drag covers a consistent fraction of the view at any zoom.
+                bool dragging = Mouse.current.middleButton.isPressed
+                                || Mouse.current.rightButton.isPressed;
+                if (dragging)
+                {
+                    var delta = Mouse.current.delta.ReadValue();
+                    // pixels → world: multiply by (worldHeight / screenHeight).
+                    float worldPerPixelY = (cam.orthographicSize * 2f) / Screen.height;
+                    cam.transform.position += new Vector3(
+                        -delta.x * worldPerPixelY,
+                        -delta.y * worldPerPixelY,
+                        0f);
                 }
             }
         }

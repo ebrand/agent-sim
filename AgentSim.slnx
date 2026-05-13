@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/AgentSim.Console/AgentSim.Console.csproj" />
     <Project Path="src/AgentSim.Core/AgentSim.Core.csproj" />
+    <Project Path="src/AgentSim.Web/AgentSim.Web.csproj" />
   </Folder>
   <Folder Name="/test/">
     <Project Path="test/AgentSim.Tests/AgentSim.Tests.csproj" />

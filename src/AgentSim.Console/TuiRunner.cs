@@ -2,6 +2,7 @@ using AgentSim.Core.Defaults;
 using AgentSim.Core.Sim;
 using AgentSim.Core.Sim.Mechanics;
 using AgentSim.Core.Types;
+using AgentSim.Core.Calibration;
 using Spectre.Console;
 
 namespace AgentSim.Console;

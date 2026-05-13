@@ -1,8 +1,9 @@
 using AgentSim.Core.Defaults;
-using AgentSim.Core.Sim;
 using AgentSim.Core.Types;
+using SimClass = AgentSim.Core.Sim.Sim;
+using SimConfig = AgentSim.Core.Types.SimConfig;
 
-namespace AgentSim.Console;
+namespace AgentSim.Core.Calibration;
 
 /// <summary>
 /// Calibration scenarios. Per the founding-economy design: early-game cities run industry-free on
@@ -15,9 +16,9 @@ namespace AgentSim.Console;
 /// </summary>
 public static class Scenarios
 {
-    public static Sim BuildMinimal()
+    public static SimClass BuildMinimal()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 1_800_000 });
+        var sim = SimClass.Create(new SimConfig { Seed = 42, StartingTreasury = 1_800_000 });
         sim.CreateResidentialZone(structureCapacity: 30);  // room for auto-spawn housing
         sim.CreateCommercialZone(CommercialSector.Food, structureCapacity: 5);
 
@@ -30,7 +31,7 @@ public static class Scenarios
         return sim;
     }
 
-    public static Sim BuildSelfSustaining()
+    public static SimClass BuildSelfSustaining()
     {
         var sim = BuildMinimal();
         var resZone = sim.State.City.Zones.Values.First(z => z.Type == ZoneType.Residential);
@@ -56,7 +57,7 @@ public static class Scenarios
         return sim;
     }
 
-    public static Sim BuildMidGame()
+    public static SimClass BuildMidGame()
     {
         var sim = BuildSelfSustaining();
 

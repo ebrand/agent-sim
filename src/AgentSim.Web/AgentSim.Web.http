@@ -1,0 +1,6 @@
+@AgentSim.Web_HostAddress = http://localhost:5116
+
+GET {{AgentSim.Web_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

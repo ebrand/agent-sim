@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Agent Sim — Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">Agent Sim</div>
+    <div class="controls">
+      <select id="scenario">
+        <option value="A">A: Minimal</option>
+        <option value="B">B: Self-sustaining</option>
+        <option value="C">C: Mid-game</option>
+      </select>
+      <button id="btn-new">New Game</button>
+      <span class="sep">|</span>
+      <button id="btn-tick">Tick 1</button>
+      <button id="btn-tick30">+30d</button>
+      <button id="btn-run">▶ Run</button>
+      <button id="btn-stop" disabled>⏸ Stop</button>
+      <span class="sep">|</span>
+      <label>Speed: <input id="speed" type="number" min="1" max="120" value="10" style="width:4em"> ticks/sec</label>
+    </div>
+    <div id="status-strip" class="status-strip"></div>
+  </header>
+
+  <main>
+    <section class="panel" id="panel-overview">
+      <h2>City</h2>
+      <div id="overview"></div>
+    </section>
+
+    <section class="panel" id="panel-services">
+      <h2>Services</h2>
+      <div id="services"></div>
+    </section>
+
+    <section class="panel" id="panel-sectors">
+      <h2>Commercial Sectors</h2>
+      <table id="sectors-table">
+        <thead><tr><th>Sector</th><th>Demand $/mo</th><th>Shops</th><th>Mfgs</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="panel-structures">
+      <h2>Structures</h2>
+      <table id="structures-table">
+        <thead><tr><th>Type</th><th>Tag</th><th>Status</th><th>Cash</th><th>Jobs</th><th>Rev</th><th>Exp</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="panel-map">
+      <h2>Map (placeholder)</h2>
+      <canvas id="map" width="600" height="300"></canvas>
+      <div class="hint">Spatial layer not yet built — placeholder grid.</div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

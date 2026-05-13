@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 using AgentSim.Core.Defaults;
 using AgentSim.Core.Types;
@@ -23,6 +24,11 @@ namespace AgentSimUnity
         private SimBootstrap _bootstrap = null!;
         private UnityTilemap _zoneTilemap = null!;
         private UnityTilemap _structureTilemap = null!;
+        private Grid _grid = null!;
+
+        /// <summary>Parent Grid for the zone + structure tilemaps. Used by placement UX
+        /// to add overlay layers (ghost preview, drag selection).</summary>
+        public Grid Grid => _grid;
         private readonly Dictionary<Color, Tile> _tileCache = new();
         private Texture2D _whiteTex = null!;
         private Sprite _whiteSprite = null!;
@@ -43,6 +49,11 @@ namespace AgentSimUnity
             BuildSpriteAsset();
             BuildTilemaps();
             SetupCamera();
+        }
+
+        void Update()
+        {
+            HandleCameraControl();
         }
 
         void LateUpdate()
@@ -108,8 +119,8 @@ namespace AgentSimUnity
             // Parent grid.
             var gridGo = new GameObject("SimGrid");
             gridGo.transform.SetParent(transform, worldPositionStays: false);
-            var grid = gridGo.AddComponent<Grid>();
-            grid.cellSize = new Vector3(1f, 1f, 0f);
+            _grid = gridGo.AddComponent<Grid>();
+            _grid.cellSize = new Vector3(1f, 1f, 0f);
 
             _zoneTilemap = MakeTilemap(gridGo.transform, "Zones", sortingOrder: 0);
             _structureTilemap = MakeTilemap(gridGo.transform, "Structures", sortingOrder: 1);
@@ -135,10 +146,41 @@ namespace AgentSimUnity
                 cam = camGo.AddComponent<Camera>();
             }
             cam.orthographic = true;
-            cam.orthographicSize = SimTilemap.MapSize / 2f;  // fits full map
-            cam.transform.position = new Vector3(SimTilemap.MapSize / 2f, SimTilemap.MapSize / 2f, -10f);
+            cam.orthographicSize = 16f;  // ~32 tiles tall — fits the default bootstrap zone
+            cam.transform.position = new Vector3(16f, 16f, -10f);
             cam.backgroundColor = new Color(0.05f, 0.06f, 0.08f);
             cam.clearFlags = CameraClearFlags.SolidColor;
+        }
+
+        // WASD/arrows pan, scroll zoom. Speed scales with zoom so it stays usable at any scale.
+        private void HandleCameraControl()
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+
+            if (Keyboard.current is not null)
+            {
+                Vector3 move = Vector3.zero;
+                if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) move.x -= 1f;
+                if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) move.x += 1f;
+                if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) move.y -= 1f;
+                if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) move.y += 1f;
+                if (move != Vector3.zero)
+                {
+                    float panSpeed = cam.orthographicSize * 2f;
+                    cam.transform.position += move.normalized * Time.deltaTime * panSpeed;
+                }
+            }
+
+            if (Mouse.current is not null)
+            {
+                float scroll = Mouse.current.scroll.ReadValue().y;
+                if (Mathf.Abs(scroll) > 0.01f)
+                {
+                    float factor = 1f - scroll * 0.001f;  // Input System scroll is ~120 per notch
+                    cam.orthographicSize = Mathf.Clamp(cam.orthographicSize * factor, 6f, 128f);
+                }
+            }
         }
 
         private Tile TileFor(Color color)
@@ -206,10 +248,17 @@ namespace AgentSimUnity
         {
             if (Mouse.current is null) return;
             if (!Mouse.current.leftButton.wasPressedThisFrame) return;
-            var cam = Camera.main;
-            if (cam == null) return;
+
+            // Yield to PlacementController if it's in an active mode.
+            var placement = GetComponent<PlacementController>();
+            if (placement != null && placement.IsActive) return;
 
             var mousePos = Mouse.current.position.ReadValue();
+            // Skip clicks inside the placement sidebar's screen area.
+            if (placement != null && mousePos.x < 220) return;
+
+            var cam = Camera.main;
+            if (cam == null) return;
             var world = cam.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0f));
             int tx = Mathf.FloorToInt(world.x);
             int ty = Mathf.FloorToInt(world.y);

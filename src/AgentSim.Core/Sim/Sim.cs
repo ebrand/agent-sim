@@ -188,7 +188,7 @@ public sealed class Sim
     /// Place an extractor or processor under a CorporateHq's ownership. M14: HQs own only the
     /// extractor + processor stages. Manufacturers are placed independently via PlaceManufacturer.
     /// </summary>
-    public Structure PlaceIndustrialStructure(StructureType type, long ownerHqId)
+    public Structure PlaceIndustrialStructure(StructureType type, long ownerHqId, int? x = null, int? y = null)
     {
         if (!Industrial.IsIndustrial(type))
             throw new ArgumentException($"{type} is not an industrial structure type", nameof(type));
@@ -222,7 +222,7 @@ public sealed class Sim
             OwnerHqId = ownerHqId,
         };
         State.City.Structures[structure.Id] = structure;
-        PlaceSpatial(structure);
+        PlaceSpatial(structure, x, y);
         hq.OwnedStructureIds.Add(structure.Id);
         return structure;
     }
@@ -233,7 +233,7 @@ public sealed class Sim
     /// M16: the manufacturer's serviced sectors and per-unit price are taken from its recipe defaults
     /// and stored on the structure (so the player or sim can override them later).
     /// </summary>
-    public Structure PlaceManufacturer(StructureType type)
+    public Structure PlaceManufacturer(StructureType type, int? x = null, int? y = null)
     {
         if (!Industrial.IsManufacturer(type))
             throw new ArgumentException($"{type} is not a manufacturer type", nameof(type));
@@ -257,7 +257,7 @@ public sealed class Sim
         };
         foreach (var sector in recipe.Sectors) structure.ManufacturerSectors.Add(sector);
         State.City.Structures[structure.Id] = structure;
-        PlaceSpatial(structure);
+        PlaceSpatial(structure, x, y);
         return structure;
     }
 
@@ -303,7 +303,7 @@ public sealed class Sim
     /// standard treasury path (and the M17 construction-goods chain). The structure is operational
     /// once construction completes; immigration will fill it as housing becomes available.
     /// </summary>
-    public Structure PlaceResidentialStructure(long residentialZoneId, StructureType type)
+    public Structure PlaceResidentialStructure(long residentialZoneId, StructureType type, int? x = null, int? y = null)
     {
         if (!State.City.Zones.TryGetValue(residentialZoneId, out var zone))
             throw new ArgumentException($"Zone {residentialZoneId} not found", nameof(residentialZoneId));
@@ -324,7 +324,7 @@ public sealed class Sim
             RequiredConstructionTicks = Defaults.Residential.BuildDurationTicks,
         };
         State.City.Structures[structure.Id] = structure;
-        PlaceSpatial(structure);
+        PlaceSpatial(structure, x, y);
         zone.StructureIds.Add(structure.Id);
         return structure;
     }
@@ -333,7 +333,7 @@ public sealed class Sim
     /// Place a restoration structure (Park / ReforestationSite / WetlandRestoration).
     /// M15: restoration structures sit outside zones and restore climate / nature per day.
     /// </summary>
-    public Structure PlaceRestorationStructure(StructureType type)
+    public Structure PlaceRestorationStructure(StructureType type, int? x = null, int? y = null)
     {
         if (type != StructureType.Park
             && type != StructureType.ReforestationSite
@@ -354,6 +354,7 @@ public sealed class Sim
             RequiredConstructionTicks = 7,
         };
         State.City.Structures[structure.Id] = structure;
+        PlaceSpatial(structure, x, y);
         return structure;
     }
 
@@ -364,7 +365,7 @@ public sealed class Sim
     /// capital in reserve after the supply chain is built. The HQ then funds its own subordinates'
     /// construction, accrues their profits each month, and pays a corporate-profit tax to the city.
     /// </summary>
-    public Structure PlaceCorporateHq(long commercialZoneId, IndustryType industry, string name)
+    public Structure PlaceCorporateHq(long commercialZoneId, IndustryType industry, string name, int? x = null, int? y = null)
     {
         if (!State.City.Zones.TryGetValue(commercialZoneId, out var zone))
             throw new ArgumentException($"Zone {commercialZoneId} not found", nameof(commercialZoneId));
@@ -385,7 +386,7 @@ public sealed class Sim
             CashBalance = Defaults.Industry.StartingCashFor(industry),
         };
         State.City.Structures[structure.Id] = structure;
-        PlaceSpatial(structure);
+        PlaceSpatial(structure, x, y);
         zone.StructureIds.Add(structure.Id);
         return structure;
     }
@@ -395,7 +396,7 @@ public sealed class Sim
     /// Education structures sit outside zones and start a 90-tick construction. Once operational,
     /// they offer seats for school-aged agents to enroll.
     /// </summary>
-    public Structure PlaceEducationStructure(StructureType type)
+    public Structure PlaceEducationStructure(StructureType type, int? x = null, int? y = null)
     {
         if (type != StructureType.PrimarySchool
             && type != StructureType.SecondarySchool
@@ -418,7 +419,7 @@ public sealed class Sim
             JobSlots = Defaults.CivicEmployment.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
         };
         State.City.Structures[structure.Id] = structure;
-        PlaceSpatial(structure);
+        PlaceSpatial(structure, x, y);
         return structure;
     }
 
@@ -427,7 +428,7 @@ public sealed class Sim
     /// requirement per `structures.md`). 90-tick construction. M9 scope: capacity + operational
     /// state only; no operating cost, no jobs, no goods cost yet.
     /// </summary>
-    public Structure PlaceServiceStructure(StructureType type)
+    public Structure PlaceServiceStructure(StructureType type, int? x = null, int? y = null)
     {
         var category = type.Category();
         if (category != StructureCategory.Civic
@@ -451,7 +452,7 @@ public sealed class Sim
             JobSlots = Defaults.CivicEmployment.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
         };
         State.City.Structures[structure.Id] = structure;
-        PlaceSpatial(structure);
+        PlaceSpatial(structure, x, y);
         return structure;
     }
 
@@ -460,7 +461,7 @@ public sealed class Sim
     /// belongs to a single CommercialSector — agents' sector COL flows only to commercials of the
     /// matching sector. CorporateHq is placed separately via PlaceCorporateHq and has no sector.
     /// </summary>
-    public Structure PlaceCommercialStructure(long commercialZoneId, StructureType type, CommercialSector sector)
+    public Structure PlaceCommercialStructure(long commercialZoneId, StructureType type, CommercialSector sector, int? x = null, int? y = null)
     {
         if (!State.City.Zones.TryGetValue(commercialZoneId, out var zone))
             throw new ArgumentException($"Zone {commercialZoneId} not found", nameof(commercialZoneId));
@@ -485,7 +486,7 @@ public sealed class Sim
             Sector = sector,
         };
         State.City.Structures[structure.Id] = structure;
-        PlaceSpatial(structure);
+        PlaceSpatial(structure, x, y);
         zone.StructureIds.Add(structure.Id);
         return structure;
     }

@@ -1,3 +1,4 @@
+#nullable enable
 using AgentSim.Core.Calibration;
 using AgentSim.Core.Sim;
 using AgentSim.Core.Sim.Mechanics;
@@ -14,6 +15,8 @@ namespace AgentSimUnity
     /// Drop on any GameObject in a scene and press Play. Phase C will replace the OnGUI overlay
     /// with a real Tilemap + UI Toolkit dashboard.
     /// </summary>
+    [RequireComponent(typeof(SimVisualizer))]
+    [RequireComponent(typeof(PlacementController))]
     public class SimBootstrap : MonoBehaviour
     {
         public enum ScenarioChoice { Minimal, SelfSustaining, MidGame }
@@ -74,8 +77,11 @@ namespace AgentSimUnity
             var worst = Mathf.Min((float)snap.CivicPercent, (float)snap.HealthcarePercent,
                 Mathf.Min((float)snap.UtilityPercent, (float)snap.EnvironmentalPercent));
 
-            GUI.Box(new Rect(10, 10, 360, 200), $"AgentSim — {_scenarioName}");
-            GUILayout.BeginArea(new Rect(20, 30, 340, 180));
+            // Offset to clear the placement sidebar (width 220) + mode strip.
+            const int hudX = 230;
+            const int hudY = 40;
+            GUI.Box(new Rect(hudX, hudY, 360, 200), $"AgentSim — {_scenarioName}");
+            GUILayout.BeginArea(new Rect(hudX + 10, hudY + 20, 340, 180));
             GUILayout.Label($"Day {s.CurrentTick} (M{(s.CurrentTick + 29) / 30})");
             GUILayout.Label($"Pop {s.City.Population}   Employed {EmployedCount(s)}");
             GUILayout.Label($"Treasury ${s.City.TreasuryBalance:N0}");

@@ -8,11 +8,13 @@ public static class TaxRates
     /// <summary>Flat sales tax on commercial revenue (3% per `economy.md`).</summary>
     public const double SalesTax = 0.03;
 
-    /// <summary>Property tax as % of structure value per month (0.5% per `economy.md`).</summary>
-    public const double PropertyTaxMonthly = 0.005;
+    /// <summary>Property tax as % of structure value per month. Lowered from 0.5% to 0.3% as part
+    /// of the invariant-driven calibration to ease the fixed-cost burden on commercial+industrial.</summary>
+    public const double PropertyTaxMonthly = 0.003;
 
-    /// <summary>Import upcharge over local price (25% per `economy.md`).</summary>
-    public const double ImportUpcharge = 0.25;
+    /// <summary>Import upcharge over local price. Lowered from M14's 25% to 15% during calibration
+    /// so shops without local mfg supply bleed less while local mfg still saves meaningful margin.</summary>
+    public const double ImportUpcharge = 0.15;
 
     /// <summary>
     /// Corporate profit tax — applied to the amount swept from industrial subsidiaries to a

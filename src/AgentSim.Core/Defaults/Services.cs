@@ -16,6 +16,8 @@ public static class Services
     public const int HospitalCapacity = 12_500;
     public const int GeneratorCapacity = 10_000;
     public const int WellCapacity = 10_000;
+    public const int ElectricityDistributionCapacity = 5_000;
+    public const int WaterDistributionCapacity = 5_000;
 
     /// <summary>Per-type capacity. 0 for non-service types. Education is handled via Structure.SeatCapacity.</summary>
     public static int CapacityFor(StructureType type) => type switch
@@ -27,6 +29,8 @@ public static class Services
         StructureType.Hospital => HospitalCapacity,
         StructureType.Generator => GeneratorCapacity,
         StructureType.Well => WellCapacity,
+        StructureType.ElectricityDistribution => ElectricityDistributionCapacity,
+        StructureType.WaterDistribution => WaterDistributionCapacity,
         _ => 0,
     };
 

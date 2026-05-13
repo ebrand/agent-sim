@@ -76,6 +76,11 @@ public static class SettlementMechanic
         //    storage/region/imports for the goods backing this consumption. Updates MonthlyRevenue.
         CostOfLivingMechanic.RunMonthlyCol(state);
 
+        // 4b. Variable industrial workforce: lay off excess workers BEFORE wages are paid this
+        //     month, so over-supplied industrial chains don't burn full-staff wages on idle capacity.
+        //     Uses MonthlySalesUnits accumulated during the month (including this tick's COL pulls).
+        ProductionStaffingMechanic.RunMonthly(state);
+
         // 5. Sales tax (commercial → treasury). Uses MonthlyRevenue accumulated in step 4.
         //    M12: CorporateHq is exempt from sales tax — its swept-up profit is taxed separately
         //    via the corporate-profit tax in CorporateProfitMechanic to avoid double taxation.
@@ -120,6 +125,16 @@ public static class SettlementMechanic
         // 10. Monthly births (after emigration so this month's emigrants don't count toward birth rate).
         BirthMechanic.RunMonthlyBirths(state);
 
+        // 10b. M-cal: monthly immigration. Vacant labor demand attracts agents from the reservoir,
+        //     bounded by available housing. New immigrants get per-tier StartingSavings.
+        if (state.Config.ImmigrationEnabled)
+        {
+            ImmigrationMechanic.RunMonthlyImmigration(state);
+        }
+
+        // 10c. Zone auto-spawn: residential / commercial zones grow buildings to match demand.
+        ZoneAutoSpawnMechanic.RunMonthly(state);
+
         // 11. Bankruptcy clock + game-over check (uses UpkeepFundingFraction from step 1).
         TreasuryUpkeepMechanic.RunEndOfMonthBankruptcyCheck(state);
     }
@@ -132,7 +147,7 @@ public static class SettlementMechanic
         if (!state.City.Structures.TryGetValue(agent.ResidenceStructureId.Value, out var residence)) return;
         if (residence.Category != StructureCategory.Residential) return;
 
-        var rent = Residential.MonthlyRent(residence.Type);
+        var rent = Rent.RentForAgent(agent, residence);
         agent.Savings -= rent;
         state.City.TreasuryBalance += rent;
     }
@@ -143,7 +158,7 @@ public static class SettlementMechanic
         if (!state.City.Structures.TryGetValue(agent.ResidenceStructureId.Value, out var residence)) return;
         if (residence.Category != StructureCategory.Residential) return;
 
-        var utility = Utilities.MonthlyResidentialUtility(residence.Type);
+        var utility = Rent.UtilityForAgent(agent, residence);
         agent.Savings -= utility;
         state.City.TreasuryBalance += utility;
     }
@@ -151,6 +166,10 @@ public static class SettlementMechanic
     private static void PayCommercialUtilities(SimState state, Structure structure)
     {
         var utility = Commercial.MonthlyUtility(structure.Type);
+        if (FoundingPhase.IsActive(state))
+        {
+            utility = (int)(utility * FoundingPhase.CommercialUtilityFactor);
+        }
         structure.CashBalance -= utility;
         structure.MonthlyExpenses += utility;
         state.City.TreasuryBalance += utility;
@@ -179,11 +198,25 @@ public static class SettlementMechanic
         var tax = (int)(gross * TaxRates.IncomeTax);
         var net = gross - tax;
 
-        // M13: industrial employers route wage expense to the owning HQ (the chain's payroll is
-        // paid by the company HQ). Commercial / non-HQ-owned structures pay their own wages.
-        IndustrialProductionMechanic.ChargeExpenseToHqOrSelf(state, employer, gross);
+        // Payer dispatch: civic/healthcare/education/utility employers are paid from the treasury;
+        // industrial employers route to their owning HQ; commercial pay themselves.
+        if (CivicEmployment.IsTreasuryEmployer(employer.Category))
+        {
+            state.City.TreasuryBalance -= gross;
+        }
+        else
+        {
+            // Founding phase: treasury subsidizes a share of commercial/industrial wages so early
+            // employers don't bleed dry while pop/demand ramp up. Treasury pays the subsidized
+            // portion; employer pays the rest.
+            int subsidy = FoundingPhase.IsActive(state)
+                ? (int)(gross * FoundingPhase.WageSubsidyFraction)
+                : 0;
+            var employerShare = gross - subsidy;
+            state.City.TreasuryBalance -= subsidy;
+            IndustrialProductionMechanic.ChargeExpenseToHqOrSelf(state, employer, employerShare);
+        }
 
-        // Inflow to agent (net) + treasury (tax)
         agent.Savings += net;
         state.City.TreasuryBalance += tax;
     }
@@ -201,6 +234,10 @@ public static class SettlementMechanic
     {
         var value = StructureValueLookup(structure);
         var tax = (int)(value * TaxRates.PropertyTaxMonthly);
+        if (FoundingPhase.IsActive(state))
+        {
+            tax = (int)(tax * FoundingPhase.PropertyTaxFactor);
+        }
         if (tax <= 0) return;
         // M13: industrial structures' property tax charges the owning HQ (if any).
         IndustrialProductionMechanic.ChargeExpenseToHqOrSelf(state, structure, tax);

@@ -57,9 +57,6 @@ public static class Construction
     // M14d additions (Stone diversification)
     public const int ChalkPlant = 250_000;      // rock → chalk processor
 
-    // M14e additions (Mfg-to-Mfg chain-up)
-    public const int Printer = 350_000;         // Paper + Plastic → Books
-
     // M15 additions (Restoration)
     public const int Park = 80_000;             // urban park — light restoration
     public const int ReforestationSite = 150_000;  // strongest single-site restoration
@@ -82,6 +79,8 @@ public static class Construction
         StructureType.College => 10,
         StructureType.Generator => 10,
         StructureType.Well => 10,
+        StructureType.ElectricityDistribution => 10,
+        StructureType.WaterDistribution => 10,
 
         // Lighter construction for residential-style social infrastructure.
         StructureType.AffordableHousing => 2,
@@ -136,8 +135,6 @@ public static class Construction
             StructureType.Ginnery => Ginnery,
             // M14d (Stone diversification)
             StructureType.ChalkPlant => ChalkPlant,
-            // M14e (Mfg-to-Mfg chain-up)
-            StructureType.Printer => Printer,
             // M15 (Restoration)
             StructureType.Park => Park,
             StructureType.ReforestationSite => ReforestationSite,

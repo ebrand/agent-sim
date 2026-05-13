@@ -6,10 +6,6 @@ namespace AgentSim.Tests.Integration;
 
 public class IndustrialTests
 {
-    /// <summary>
-    /// Helper: ensure a CorporateHq for the given industry exists, with enough cash to fund
-    /// arbitrary subordinate construction. Used by direct-call tests that specify their industry.
-    /// </summary>
     private static long EnsureHq(Sim sim, IndustryType industry = IndustryType.Forestry)
     {
         var existing = sim.State.City.Structures.Values
@@ -24,7 +20,6 @@ public class IndustrialTests
         return hq.Id;
     }
 
-    /// <summary>Pick the first industry that allows this structure type and return / create a matching HQ.</summary>
     private static long EnsureHqForType(Sim sim, StructureType type)
     {
         IndustryType? required = null;
@@ -37,21 +32,11 @@ public class IndustrialTests
         return EnsureHq(sim, industry);
     }
 
-    /// <summary>
-    /// Helper: place industrial structure under a test HQ, skip construction, manually fully-staff
-    /// it, seed cash.
-    ///
-    /// Manual staffing is needed because industrial structures require 100 workers each (per the
-    /// 15/20/40/25 mix), but bootstrap only provides 50 settlers. The first industrial structure
-    /// would hire all bootstrap settlers; subsequent ones would be critically understaffed and
-    /// produce zero output. For M4 production-flow tests we set FilledSlots directly.
-    /// </summary>
     private static Structure PlaceAndOperationalize(Sim sim, StructureType type, int seedCash = 100_000)
     {
         Structure s;
         if (Industrial.IsManufacturer(type))
         {
-            // M14: manufacturers are standalone (no HQ). Bump treasury to cover construction.
             if (sim.State.City.TreasuryBalance < 2_000_000)
                 sim.State.City.TreasuryBalance += 2_000_000;
             s = sim.PlaceManufacturer(type);
@@ -63,12 +48,7 @@ public class IndustrialTests
         }
         s.ConstructionTicks = s.RequiredConstructionTicks;
         s.CashBalance = seedCash;
-
-        // Pre-fill all job slots (bypasses the agent pool — production mechanic uses FilledSlots).
-        foreach (var (tier, count) in s.JobSlots)
-        {
-            s.FilledSlots[tier] = count;
-        }
+        foreach (var (tier, count) in s.JobSlots) s.FilledSlots[tier] = count;
         return s;
     }
 
@@ -80,7 +60,7 @@ public class IndustrialTests
         var extractor = sim.PlaceIndustrialStructure(StructureType.ForestExtractor, hqId);
 
         Assert.False(extractor.Operational);
-        Assert.Equal(0, extractor.ZoneId);  // industrial sits outside zones
+        Assert.Equal(0, extractor.ZoneId);
     }
 
     [Fact]
@@ -92,107 +72,35 @@ public class IndustrialTests
     }
 
     [Fact]
-    public void ForestExtractor_ProducesWoodWhenStaffed()
+    public void ForestExtractor_ProducesRawUnitsWhenStaffed()
     {
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         var extractor = PlaceAndOperationalize(sim, StructureType.ForestExtractor);
 
-        sim.Tick(1);  // production fires
+        sim.Tick(1);
 
-        var produced = extractor.RawStorage.GetValueOrDefault(RawMaterial.Wood);
-        Assert.True(produced > 0, $"Forest extractor should produce wood after 1 day. Got {produced}.");
+        Assert.True(extractor.RawUnitsInStock > 0,
+            $"Forest extractor should accumulate raw units. Got {extractor.RawUnitsInStock}.");
     }
 
     [Fact]
-    public void Sawmill_RequiresWoodInput_ProducesLumberWhenAvailable()
+    public void Sawmill_ProducesWoodMfgInput_FromForestExtractor()
     {
-        // M13 consolidated model: no per-link cash flow between extractor and sawmill (same HQ
-        // owns both). Goods flow only. Test just verifies the goods chain works.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
 
-        var extractor = PlaceAndOperationalize(sim, StructureType.ForestExtractor);
+        PlaceAndOperationalize(sim, StructureType.ForestExtractor);
         var sawmill = PlaceAndOperationalize(sim, StructureType.Sawmill);
 
-        sim.Tick(1);  // hire
-        sim.Tick(5);  // production runs; wood accumulates; sawmill consumes some
+        sim.Tick(5);
 
-        var lumberProduced = sawmill.ProcessedStorage.GetValueOrDefault(ProcessedGood.Lumber);
-        Assert.True(lumberProduced > 0, $"Sawmill should have produced lumber. Got {lumberProduced}.");
+        var wood = sawmill.MfgInputStorage.GetValueOrDefault(MfgInput.Wood);
+        Assert.True(wood > 0, $"Sawmill should produce Wood. Got {wood}.");
     }
 
     [Fact]
-    public void PaperMill_RequiresPulp_ProducesPaper()
+    public void PaperMill_ProducesOutputUnits_FromPulp()
     {
-        // M14b: PaperMill is a single-input manufacturer (Pulp → Paper). Easier integration test
-        // than HouseholdFactory (which now needs 4 different industry chains).
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-
-        PlaceAndOperationalize(sim, StructureType.ForestExtractor);
-        PlaceAndOperationalize(sim, StructureType.PulpMill);  // produces Pulp from Wood
-        var mill = PlaceAndOperationalize(sim, StructureType.PaperMill);
-
-        sim.Tick(30);  // a month for the chain to flow
-
-        var paperProduced = mill.ManufacturedStorage.GetValueOrDefault(ManufacturedGood.Paper);
-        Assert.True(paperProduced > 0,
-            $"Paper mill should have produced some paper. Got {paperProduced}.");
-    }
-
-    [Fact]
-    public void HouseholdFactory_RequiresAllInputs_ProducesHousehold()
-    {
-        // M14b: HouseholdFactory needs Lumber + Steel + Silicate + Plastic — four industries.
-        // Build all four full chains under separate HQs, then verify production.
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-
-        // Forestry: ForestExtractor + Sawmill (for Lumber)
-        PlaceAndOperationalize(sim, StructureType.ForestExtractor);
-        PlaceAndOperationalize(sim, StructureType.Sawmill);
-        // Mining: Mine + Smelter (for Steel)
-        PlaceAndOperationalize(sim, StructureType.Mine);
-        PlaceAndOperationalize(sim, StructureType.Smelter);
-        // Glass: SandPit + SilicatePlant (for Silicate)
-        PlaceAndOperationalize(sim, StructureType.SandPit);
-        PlaceAndOperationalize(sim, StructureType.SilicatePlant);
-        // Oil: OilWell + PlasticPlant (for Plastic)
-        PlaceAndOperationalize(sim, StructureType.OilWell);
-        PlaceAndOperationalize(sim, StructureType.PlasticPlant);
-        // Manufacturer
-        var factory = PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
-
-        sim.Tick(30);  // one month for production to flow
-
-        var householdProduced = factory.ManufacturedStorage.GetValueOrDefault(ManufacturedGood.Household);
-        Assert.True(householdProduced > 0,
-            $"Household factory should have produced some household goods. Got {householdProduced}.");
-    }
-
-    [Fact]
-    public void HouseholdFactory_MissingInputs_DoesNotProduce()
-    {
-        // Without all four input chains, HouseholdFactory produces nothing (multi-input gating).
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-        sim.CreateResidentialZone();
-
-        // Only Forestry — missing Steel + Silicate + Plastic.
-        PlaceAndOperationalize(sim, StructureType.ForestExtractor);
-        PlaceAndOperationalize(sim, StructureType.Sawmill);
-        var factory = PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
-
-        sim.Tick(30);
-
-        var householdProduced = factory.ManufacturedStorage.GetValueOrDefault(ManufacturedGood.Household);
-        Assert.Equal(0, householdProduced);
-    }
-
-    [Fact]
-    public void Manufacturer_AccumulatesOutputInOwnBuffer()
-    {
-        // M14: with no storage layer, manufacturer holds its output in its own ManufacturedStorage.
-        // Using PaperMill (single-input) avoids needing four input chains.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
 
@@ -202,32 +110,81 @@ public class IndustrialTests
 
         sim.Tick(30);
 
-        var paper = mill.ManufacturedStorage.GetValueOrDefault(ManufacturedGood.Paper);
-        Assert.True(paper > 0,
-            $"PaperMill should have accumulated paper in its own buffer. Got {paper}.");
+        Assert.True(mill.MfgOutputStock > 0,
+            $"PaperMill should accumulate output units. Got {mill.MfgOutputStock}.");
+    }
+
+    [Fact]
+    public void HouseholdFactory_RequiresAllInputs_Produces()
+    {
+        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        sim.CreateResidentialZone();
+
+        // Wood
+        PlaceAndOperationalize(sim, StructureType.ForestExtractor);
+        PlaceAndOperationalize(sim, StructureType.Sawmill);
+        // Steel
+        PlaceAndOperationalize(sim, StructureType.Mine);
+        PlaceAndOperationalize(sim, StructureType.Smelter);
+        // Glass
+        PlaceAndOperationalize(sim, StructureType.SandPit);
+        PlaceAndOperationalize(sim, StructureType.SilicatePlant);
+        // Plastic
+        PlaceAndOperationalize(sim, StructureType.OilWell);
+        PlaceAndOperationalize(sim, StructureType.PlasticPlant);
+
+        var factory = PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
+
+        sim.Tick(30);
+
+        Assert.True(factory.MfgOutputStock > 0,
+            $"HouseholdFactory should produce sector units. Got {factory.MfgOutputStock}.");
+    }
+
+    [Fact]
+    public void HouseholdFactory_MissingInputs_DoesNotProduce()
+    {
+        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        sim.CreateResidentialZone();
+
+        // Only Forestry — missing Steel + Glass + Plastic.
+        PlaceAndOperationalize(sim, StructureType.ForestExtractor);
+        PlaceAndOperationalize(sim, StructureType.Sawmill);
+        var factory = PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
+
+        sim.Tick(30);
+
+        Assert.Equal(0, factory.MfgOutputStock);
+    }
+
+    [Fact]
+    public void Manufacturer_DeclaresSectorsAndUnitPrice()
+    {
+        var sim = Sim.Create(new SimConfig { Seed = 42 });
+        sim.CreateResidentialZone();
+        var mfg = PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
+
+        Assert.Contains(CommercialSector.Retail, mfg.ManufacturerSectors);
+        Assert.Equal(300, mfg.MfgUnitPrice);
     }
 
     [Fact]
     public void IndustrialStructure_PaysUtilitiesMonthly()
     {
-        // Under Option A, all flows happen on day 30. Verify industrial utilities flow to treasury.
-        // ForestExtractor construction = $150k.
         var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 200_000 });
         sim.CreateResidentialZone();
-        var extractor = PlaceAndOperationalize(sim, StructureType.ForestExtractor);
+        PlaceAndOperationalize(sim, StructureType.ForestExtractor);
 
         var treasuryBefore = sim.State.City.TreasuryBalance;
-        sim.Tick(30);  // monthly settlement
+        sim.Tick(30);
 
-        // Treasury collected residential rent + utilities + extractor utilities.
-        Assert.True(sim.State.City.TreasuryBalance > treasuryBefore + 50 * 800,
+        Assert.True(sim.State.City.TreasuryBalance > treasuryBefore + 50 * 450,
             "Treasury should have received industrial utility payment on top of rent.");
     }
 
     [Fact]
     public void IndustrialStructure_PropertyTax_ChargedToHq()
     {
-        // M13: expense (property tax + utilities) charged to HQ, not the sub.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var extractor = PlaceAndOperationalize(sim, StructureType.ForestExtractor);
@@ -235,20 +192,16 @@ public class IndustrialTests
 
         var hqCashBefore = hq.CashBalance;
         var extractorCashBefore = extractor.CashBalance;
-        sim.Tick(30);  // monthly settlement
+        sim.Tick(30);
 
-        // Sub cash unchanged (HQ pays its bills).
         Assert.Equal(extractorCashBefore, extractor.CashBalance);
-        // HQ paid utility + property tax (+ wages, none since no real agents).
         Assert.True(hq.CashBalance < hqCashBefore,
             $"HQ should have paid sub expenses. Before: {hqCashBefore}, After: {hq.CashBalance}");
     }
 
     [Fact]
-    public void HqEarns_WhenManufacturerBuysFromProcessor()
+    public void HqEarns_WhenManufacturerBuysMfgInputFromProcessor()
     {
-        // M14: the manufacturer (standalone) pays the processor's HQ for processed goods.
-        // Use PaperMill (single-input Pulp) to keep the test focused on the cash transaction.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         sim.CreateResidentialZone();
         var extractor = PlaceAndOperationalize(sim, StructureType.ForestExtractor);
@@ -256,7 +209,7 @@ public class IndustrialTests
         var mfg = PlaceAndOperationalize(sim, StructureType.PaperMill);
         var hq = sim.State.City.Structures[extractor.OwnerHqId!.Value];
 
-        sim.Tick(15);  // mid-month, before reset
+        sim.Tick(15);
 
         Assert.True(hq.MonthlyRevenue > 0,
             $"HQ should record revenue from Mfg pulp purchases. Got {hq.MonthlyRevenue}.");
@@ -271,8 +224,8 @@ public class IndustrialTests
             var sim = Sim.Create(new SimConfig { Seed = 42 });
             sim.CreateResidentialZone();
             PlaceAndOperationalize(sim, StructureType.ForestExtractor);
-            PlaceAndOperationalize(sim, StructureType.Sawmill);
-            PlaceAndOperationalize(sim, StructureType.HouseholdFactory);
+            PlaceAndOperationalize(sim, StructureType.PulpMill);
+            var mfg = PlaceAndOperationalize(sim, StructureType.PaperMill);
             sim.Tick(360);
             return sim;
         }
@@ -280,9 +233,9 @@ public class IndustrialTests
         var sim1 = BuildSim();
         var sim2 = BuildSim();
 
-        Assert.Equal(
-            sim1.State.Region.GoodsReservoir.GetValueOrDefault(ManufacturedGood.Household),
-            sim2.State.Region.GoodsReservoir.GetValueOrDefault(ManufacturedGood.Household));
+        var mfg1 = sim1.State.City.Structures.Values.First(s => s.Type == StructureType.PaperMill);
+        var mfg2 = sim2.State.City.Structures.Values.First(s => s.Type == StructureType.PaperMill);
+        Assert.Equal(mfg1.MfgOutputStock, mfg2.MfgOutputStock);
         Assert.Equal(sim1.State.City.Population, sim2.State.City.Population);
     }
 }

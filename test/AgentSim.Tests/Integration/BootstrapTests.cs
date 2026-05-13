@@ -107,22 +107,6 @@ public class BootstrapTests
     }
 
     [Fact]
-    public void Bootstrap_ConsumesGoodsStock()
-    {
-        var sim = Sim.Create(new SimConfig { Seed = 42 });
-
-        sim.CreateResidentialZone();
-
-        // 13 houses × {10 bldg supplies, 5 concrete, 2 glass goods}
-        // = 130 bldg supplies, 65 concrete, 26 glass goods consumed from {200, 100, 40} stock
-        // Remaining: 70 bldg supplies, 35 concrete, 14 glass goods, 0 metal goods
-        Assert.Equal(70, sim.State.Region.GoodsReservoir[ManufacturedGood.BldgSupplies]);
-        Assert.Equal(35, sim.State.Region.GoodsReservoir[ManufacturedGood.Concrete]);
-        Assert.Equal(14, sim.State.Region.GoodsReservoir[ManufacturedGood.GlassGoods]);
-        Assert.Equal(0, sim.State.Region.GoodsReservoir[ManufacturedGood.MetalGoods]);
-    }
-
-    [Fact]
     public void Bootstrap_FiresOnlyOnce()
     {
         var sim = Sim.Create(new SimConfig { Seed = 42 });
@@ -136,14 +120,13 @@ public class BootstrapTests
     [Fact]
     public void Bootstrap_SettlersGetFoundersBonusSavings()
     {
-        // Settlers receive a founders' bonus (flat $5,000) instead of the per-tier immigrant savings.
-        // This gives them ~5 months of pre-commercial cushion to survive while the player builds commercial.
+        // M18: tier-scaled founders' bonus so each tier survives ~5 months of new rent+utility burden.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
 
         sim.CreateResidentialZone();
 
         Assert.All(sim.State.City.Agents.Values,
-            a => Assert.Equal(Bootstrap.FoundersStartingSavings, a.Savings));
+            a => Assert.Equal(Bootstrap.FoundersStartingSavings(a.EducationTier), a.Savings));
     }
 
     [Fact]

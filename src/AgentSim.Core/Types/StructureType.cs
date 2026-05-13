@@ -47,8 +47,7 @@ public enum StructureType
     FoodPackingPlant,
     ClothingFactory,
     ConcretePlant,
-    PaperMill,         // M14b: Pulp → Paper
-    Printer,           // M14e: Paper + Plastic → Books (manufacturer-to-manufacturer chain-up)
+    PaperMill,
 
     // Civic
     PoliceStation,
@@ -67,6 +66,8 @@ public enum StructureType
     // Utility
     Generator,
     Well,
+    ElectricityDistribution,
+    WaterDistribution,
 
     // Restoration
     Park,
@@ -112,8 +113,7 @@ public static class StructureTypeExtensions
         StructureType.HouseholdFactory or StructureType.BldgSuppliesFactory
             or StructureType.MetalGoodsFactory or StructureType.FoodPackingPlant
             or StructureType.ClothingFactory or StructureType.ConcretePlant
-            or StructureType.PaperMill
-            or StructureType.Printer => StructureCategory.IndustrialManufacturer,
+            or StructureType.PaperMill => StructureCategory.IndustrialManufacturer,
 
         StructureType.PoliceStation or StructureType.FireStation
             or StructureType.TownHall => StructureCategory.Civic,
@@ -123,7 +123,9 @@ public static class StructureTypeExtensions
         StructureType.PrimarySchool or StructureType.SecondarySchool
             or StructureType.College => StructureCategory.Education,
 
-        StructureType.Generator or StructureType.Well => StructureCategory.Utility,
+        StructureType.Generator or StructureType.Well
+            or StructureType.ElectricityDistribution
+            or StructureType.WaterDistribution => StructureCategory.Utility,
 
         StructureType.Park or StructureType.ReforestationSite
             or StructureType.WetlandRestoration => StructureCategory.Restoration,

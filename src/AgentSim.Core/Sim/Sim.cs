@@ -80,8 +80,25 @@ public sealed class Sim
     }
 
     /// <summary>
-    /// Create a commercial zone. Commercial structures can be auto-spawned within (M3+ auto-spawn TBD)
-    /// or manually placed via PlaceCommercialStructure.
+    /// Create a commercial zone tagged with a sector. Auto-spawned shops in this zone serve the
+    /// given sector; manually placed structures (e.g., CorporateHq) ignore the sector tag.
+    /// </summary>
+    public Zone CreateCommercialZone(CommercialSector sector, int structureCapacity = 10)
+    {
+        var zone = new Zone
+        {
+            Id = State.AllocateZoneId(),
+            Type = ZoneType.Commercial,
+            StructureCapacity = structureCapacity,
+            Sector = sector,
+        };
+        State.City.Zones[zone.Id] = zone;
+        return zone;
+    }
+
+    /// <summary>
+    /// Legacy commercial-zone API for tests / scenarios that don't need sector-typed auto-spawn
+    /// (e.g., HQ-only zones, or where structures will be placed manually with their own sector tag).
     /// </summary>
     public Zone CreateCommercialZone(int structureCapacity = 10)
     {
@@ -144,15 +161,18 @@ public sealed class Sim
     }
 
     /// <summary>
-    /// Place a standalone manufacturer. M14: manufacturers are independent industrial businesses
-    /// that buy processed goods from any HQ's processor and sell manufactured goods to commercial
-    /// (or to the region as overflow). They have their own P&L: city treasury pays for construction;
-    /// the manufacturer's own CashBalance covers ongoing operations.
+    /// Place a standalone manufacturer. M14+: manufacturers are independent industrial businesses
+    /// that buy MfgInputs from any HQ's processor and sell sector-tagged units to commercial.
+    /// M16: the manufacturer's serviced sectors and per-unit price are taken from its recipe defaults
+    /// and stored on the structure (so the player or sim can override them later).
     /// </summary>
     public Structure PlaceManufacturer(StructureType type)
     {
         if (!Industrial.IsManufacturer(type))
             throw new ArgumentException($"{type} is not a manufacturer type", nameof(type));
+
+        var recipe = Industrial.ManufacturerRecipe(type)
+            ?? throw new InvalidOperationException($"No manufacturer recipe for {type}");
 
         ChargeConstructionCost(type);
 
@@ -166,8 +186,9 @@ public sealed class Sim
             RequiredConstructionTicks = 7,
             JobSlots = Industrial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
             InternalStorageCapacity = Industrial.InternalStorageCapacity,
-            // No OwnerHqId — manufacturer is standalone.
+            MfgUnitPrice = recipe.UnitPrice,
         };
+        foreach (var sector in recipe.Sectors) structure.ManufacturerSectors.Add(sector);
         State.City.Structures[structure.Id] = structure;
         return structure;
     }
@@ -175,7 +196,7 @@ public sealed class Sim
     /// <summary>
     /// Charge the city treasury for the construction cost of a structure type. Throws if the
     /// treasury can't cover it — placement is rejected (no overdraft for new builds). Per M11
-    /// design discussion.
+    /// design discussion. M17: after deduction, route the cost through the construction-goods chain.
     /// </summary>
     private void ChargeConstructionCost(StructureType type)
     {
@@ -187,13 +208,15 @@ public sealed class Sim
                 $"Insufficient treasury to construct {type}: cost {cost}, available {State.City.TreasuryBalance}");
         }
         State.City.TreasuryBalance -= cost;
+        ConstructionGoodsMechanic.Route(State, cost);
     }
 
     /// <summary>
     /// Deduct construction cost from the HQ's CashBalance (industrial structures are funded by
-    /// their parent HQ, not the city treasury). Throws if the HQ can't afford it.
+    /// their parent HQ, not the city treasury). Throws if the HQ can't afford it. M17: after
+    /// deduction, route the cost through the construction-goods chain (same as treasury-funded).
     /// </summary>
-    private static void ChargeHqConstructionCost(Structure hq, StructureType type)
+    private void ChargeHqConstructionCost(Structure hq, StructureType type)
     {
         var cost = Defaults.Construction.Cost(type);
         if (cost <= 0) return;
@@ -203,6 +226,38 @@ public sealed class Sim
                 $"HQ {hq.Id} ({hq.Industry}) lacks cash for {type}: cost {cost}, available {hq.CashBalance}");
         }
         hq.CashBalance -= cost;
+        ConstructionGoodsMechanic.Route(State, cost);
+    }
+
+    /// <summary>
+    /// Place a residential structure in a residential zone. M-cal: the player can expand housing
+    /// capacity by building Houses/Apartments/Townhouses/etc. Construction cost flows through the
+    /// standard treasury path (and the M17 construction-goods chain). The structure is operational
+    /// once construction completes; immigration will fill it as housing becomes available.
+    /// </summary>
+    public Structure PlaceResidentialStructure(long residentialZoneId, StructureType type)
+    {
+        if (!State.City.Zones.TryGetValue(residentialZoneId, out var zone))
+            throw new ArgumentException($"Zone {residentialZoneId} not found", nameof(residentialZoneId));
+        if (zone.Type != ZoneType.Residential)
+            throw new ArgumentException($"Zone {residentialZoneId} is not a residential zone", nameof(residentialZoneId));
+        if (type.Category() != StructureCategory.Residential)
+            throw new ArgumentException($"{type} is not a residential structure type", nameof(type));
+
+        ChargeConstructionCost(type);
+
+        var structure = new Structure
+        {
+            Id = State.AllocateStructureId(),
+            Type = type,
+            ZoneId = zone.Id,
+            ResidentialCapacity = Defaults.Residential.Capacity(type),
+            ConstructionTicks = 0,
+            RequiredConstructionTicks = Defaults.Residential.BuildDurationTicks,
+        };
+        State.City.Structures[structure.Id] = structure;
+        zone.StructureIds.Add(structure.Id);
+        return structure;
     }
 
     /// <summary>
@@ -290,6 +345,7 @@ public sealed class Sim
             ConstructionTicks = 0,
             RequiredConstructionTicks = 7,
             SeatCapacity = Defaults.Education.SeatCapacityFor(type),
+            JobSlots = Defaults.CivicEmployment.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
         };
         State.City.Structures[structure.Id] = structure;
         return structure;
@@ -321,16 +377,18 @@ public sealed class Sim
             ConstructionTicks = 0,
             RequiredConstructionTicks = 7,
             ServiceCapacity = Defaults.Services.CapacityFor(type),
+            JobSlots = Defaults.CivicEmployment.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
         };
         State.City.Structures[structure.Id] = structure;
         return structure;
     }
 
     /// <summary>
-    /// Manually place a commercial structure in a commercial zone. The structure begins construction
-    /// (90 ticks) and is operational once construction completes.
+    /// Manually place a commercial structure in a commercial zone. M16: each commercial structure
+    /// belongs to a single CommercialSector — agents' sector COL flows only to commercials of the
+    /// matching sector. CorporateHq is placed separately via PlaceCorporateHq and has no sector.
     /// </summary>
-    public Structure PlaceCommercialStructure(long commercialZoneId, StructureType type)
+    public Structure PlaceCommercialStructure(long commercialZoneId, StructureType type, CommercialSector sector)
     {
         if (!State.City.Zones.TryGetValue(commercialZoneId, out var zone))
             throw new ArgumentException($"Zone {commercialZoneId} not found", nameof(commercialZoneId));
@@ -338,6 +396,8 @@ public sealed class Sim
             throw new ArgumentException($"Zone {commercialZoneId} is not a commercial zone", nameof(commercialZoneId));
         if (type.Category() != StructureCategory.Commercial)
             throw new ArgumentException($"{type} is not a commercial structure type", nameof(type));
+        if (type == StructureType.CorporateHq)
+            throw new ArgumentException("Use PlaceCorporateHq for HQ placement", nameof(type));
 
         ChargeConstructionCost(type);
 
@@ -350,6 +410,7 @@ public sealed class Sim
             ConstructionTicks = 0,
             RequiredConstructionTicks = 7,
             JobSlots = Commercial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
+            Sector = sector,
         };
         State.City.Structures[structure.Id] = structure;
         zone.StructureIds.Add(structure.Id);

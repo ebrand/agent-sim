@@ -4,166 +4,164 @@ using AgentSim.Core.Types;
 namespace AgentSim.Core.Sim.Mechanics;
 
 /// <summary>
-/// Cost-of-living spending: agents pay COL (food, clothing, household, entertainment) to
-/// commercial structures monthly. Commercial then pays storage for goods to fulfill that demand,
-/// falling through storage → regional goods reservoir → imports (at 25% upcharge) in priority order.
+/// M16 sector-based cost-of-living. On day 30:
 ///
-/// Per `economy.md`: if no commercial structure exists, COL spending fails silently — money stays
-/// in the agent's savings. If commercial exists but cannot get goods from any source (e.g., empty
-/// storage, empty region, no imports), the import fallback handles it (off-region world is always
-/// available, just expensive).
-///
-/// Goods-backed COL (food, clothing, household) consumes physical units; entertainment (service-only)
-/// produces no goods consumption.
-///
-/// Commercial spends a fixed fraction of goods-backed COL revenue on actual goods. The default 0.70
-/// implies a 30% commercial retail margin — the per-agent retail price is implicitly 1.43× the
-/// manufactured (wholesale) price, encoding the markup without an explicit retail-price table.
+///   1. Each agent's wage is split into Food / Retail / Entertainment / Disposable buckets.
+///   2. Disposable is left in agent savings.
+///   3. Food/Retail/Entertainment dollars are deducted from agent savings and routed to the
+///      sector's commercial structures (pro-rata across structures in that sector).
+///   4. Each commercial structure spends `CommercialGoodsCostFraction` of its received revenue
+///      buying units (FIFO) from manufacturers that service its sector — at each mfg's MfgUnitPrice.
+///      Unspent revenue is retail margin.
+///   5. If no commercial exists for a sector, those dollars evaporate (stay nowhere — agent
+///      still pays). If commercial exists but no mfg can supply, commercial keeps the margin and
+///      the goods-cost portion sits unused (no imports in M16).
 /// </summary>
 public static class CostOfLivingMechanic
 {
-    /// <summary>Fraction of goods-backed COL revenue that commercial spends on actual goods (rest is margin).</summary>
-    public const double CommercialGoodsCostFraction = 0.70;
+    /// <summary>Fraction of commercial-sector revenue spent on actual goods. Calibration: lowered
+    /// from 0.70 to 0.50 so commercials keep a 50% margin sufficient to cover small-shop overhead.</summary>
+    public const double CommercialGoodsCostFraction = 0.50;
 
-    /// <summary>Fires on day 30 (before the end-of-month emigration check).</summary>
     public static void RunMonthlyCol(SimState state)
     {
-        // M12: CorporateHq is in the Commercial category but is NOT consumer-facing — it's a
-        // holding company for industrial subsidiaries, not a retail outlet. Exclude it from
-        // COL distribution (agents can't buy household goods from Big Oil HQ).
-        var commercials = state.City.Structures.Values
+        var operational = state.City.Structures.Values
             .Where(s => s.Category == StructureCategory.Commercial
                         && s.Type != StructureType.CorporateHq
                         && s.Operational
                         && !s.Inactive)
             .ToList();
 
-        if (commercials.Count == 0)
+        var bySector = new Dictionary<CommercialSector, List<Structure>>();
+        foreach (var s in operational)
         {
-            // No commercial → all COL spending fails silently. Money stays in agent savings.
-            return;
+            if (s.Sector is not CommercialSector sec) continue;
+            if (!bySector.TryGetValue(sec, out var list))
+            {
+                list = new List<Structure>();
+                bySector[sec] = list;
+            }
+            list.Add(s);
         }
 
-        // Aggregate COL revenue from agents AND per-good dollar demand
-        var totalRevenue = 0;
-        var foodDollars = 0;
-        var clothingDollars = 0;
-        var householdDollars = 0;
+        // Per the historic "no commercial → COL not paid" invariant: agents only spend on sectors
+        // where commercial exists. Without commercial, the dollars stay in agent savings.
+        var foodTotal = 0;
+        var retailTotal = 0;
+        var entertainmentTotal = 0;
+
+        var foodAvailable = bySector.ContainsKey(CommercialSector.Food);
+        var retailAvailable = bySector.ContainsKey(CommercialSector.Retail);
+        var entAvailable = bySector.ContainsKey(CommercialSector.Entertainment);
 
         foreach (var agent in state.City.Agents.Values)
         {
-            var col = CostOfLiving.MonthlyCol(agent.EducationTier);
-            agent.Savings -= col;
-            totalRevenue += col;
-
-            var wage = Wages.MonthlyWage(agent.EducationTier);
-            foodDollars += (int)(wage * CostOfLiving.FoodFraction);
-            clothingDollars += (int)(wage * CostOfLiving.ClothingFraction);
-            householdDollars += (int)(wage * CostOfLiving.HouseholdFraction);
+            var spend = 0;
+            if (foodAvailable)
+            {
+                var food = CostOfLiving.SectorAmount(agent.EducationTier, CommercialSector.Food);
+                spend += food;
+                foodTotal += food;
+            }
+            if (retailAvailable)
+            {
+                var retail = CostOfLiving.SectorAmount(agent.EducationTier, CommercialSector.Retail);
+                spend += retail;
+                retailTotal += retail;
+            }
+            if (entAvailable)
+            {
+                var ent = CostOfLiving.SectorAmount(agent.EducationTier, CommercialSector.Entertainment);
+                spend += ent;
+                entertainmentTotal += ent;
+            }
+            agent.Savings -= spend;
         }
 
-        // Distribute total COL revenue evenly across operational commercial structures.
-        DistributeProRata(commercials, totalRevenue, isInflow: true);
+        DistributeAndBuy(state, bySector, CommercialSector.Food, foodTotal);
+        DistributeAndBuy(state, bySector, CommercialSector.Retail, retailTotal);
+        DistributeAndBuy(state, bySector, CommercialSector.Entertainment, entertainmentTotal);
+    }
 
-        // Commercial pays for goods. 70% of goods-backed COL goes to storage / region / imports;
-        // commercial keeps the remaining 30% as its retail margin.
-        var foodGoodsCost = (int)(foodDollars * CommercialGoodsCostFraction);
-        var clothingGoodsCost = (int)(clothingDollars * CommercialGoodsCostFraction);
-        var householdGoodsCost = (int)(householdDollars * CommercialGoodsCostFraction);
+    private static void DistributeAndBuy(
+        SimState state,
+        Dictionary<CommercialSector, List<Structure>> bySector,
+        CommercialSector sector,
+        int sectorDollars)
+    {
+        if (sectorDollars <= 0) return;
+        if (!bySector.TryGetValue(sector, out var commercials) || commercials.Count == 0)
+        {
+            // No commercial in this sector — dollars evaporate (agents already paid).
+            return;
+        }
 
-        FulfillGoodsDemand(state, commercials, ManufacturedGood.Food, foodGoodsCost);
-        FulfillGoodsDemand(state, commercials, ManufacturedGood.Clothing, clothingGoodsCost);
-        FulfillGoodsDemand(state, commercials, ManufacturedGood.Household, householdGoodsCost);
+        // Pro-rata distribute revenue to commercials in sector.
+        var perStructure = sectorDollars / commercials.Count;
+        var remainder = sectorDollars % commercials.Count;
+        foreach (var c in commercials)
+        {
+            var share = perStructure + (remainder > 0 ? 1 : 0);
+            if (remainder > 0) remainder--;
+            c.CashBalance += share;
+            c.MonthlyRevenue += share;
+
+            var goodsBudget = (int)(share * CommercialGoodsCostFraction);
+            if (goodsBudget > 0)
+            {
+                BuyFromMfgsServicingSector(state, c, sector, goodsBudget);
+            }
+        }
     }
 
     /// <summary>
-    /// Commercial structures collectively buy goods worth `dollarAmount` of `good`.
-    /// Fulfill from storage → regional reservoir → imports in priority order.
-    /// Money flows out from commercial structures (deducted pro-rata).
+    /// Spend `dollarBudget` buying units (FIFO across manufacturers) from any mfg servicing this
+    /// sector. Cash leaves the commercial structure; revenue accrues to the mfg. Any budget that
+    /// can't be filled locally goes to imports at TaxRates.ImportUpcharge upcharge — commercial
+    /// pays MORE than the budget (cash deficit) and the dollars leave the local economy.
     /// </summary>
-    private static void FulfillGoodsDemand(
+    private static void BuyFromMfgsServicingSector(
         SimState state,
-        List<Structure> commercials,
-        ManufacturedGood good,
-        int dollarAmount)
+        Structure commercial,
+        CommercialSector sector,
+        int dollarBudget)
     {
-        if (dollarAmount <= 0) return;
-
-        var unitPrice = Industrial.ManufacturedGoodPrice(good);
-        var unitsDemanded = dollarAmount / unitPrice;
-        if (unitsDemanded <= 0) return;
-
-        var actualCost = 0;
-        var unitsRemaining = unitsDemanded;
-
-        // 1. Try local manufacturers. M14: commercial buys directly from standalone manufacturers
-        // (no Storage layer anymore). Revenue accrues to the manufacturer's own CashBalance since
-        // manufacturers are standalone industrial entities.
-        foreach (var manufacturer in state.City.Structures.Values
-                     .Where(s => Industrial.IsManufacturer(s.Type)
-                                 && s.Operational && !s.Inactive))
+        foreach (var mfg in state.City.Structures.Values)
         {
-            if (unitsRemaining <= 0) break;
-            var available = manufacturer.ManufacturedStorage.GetValueOrDefault(good);
-            var pull = Math.Min(available, unitsRemaining);
-            if (pull <= 0) continue;
+            if (dollarBudget <= 0) break;
+            if (!Industrial.IsManufacturer(mfg.Type)) continue;
+            if (!mfg.Operational || mfg.Inactive) continue;
+            if (!mfg.ManufacturerSectors.Contains(sector)) continue;
+            if (mfg.MfgOutputStock <= 0) continue;
+            if (mfg.MfgUnitPrice <= 0) continue;
 
-            var cost = pull * unitPrice;
-            manufacturer.ManufacturedStorage[good] = available - pull;
-            manufacturer.CashBalance += cost;
-            manufacturer.MonthlyRevenue += cost;
-            actualCost += cost;
-            unitsRemaining -= pull;
+            var affordable = dollarBudget / mfg.MfgUnitPrice;
+            if (affordable <= 0) continue;
+
+            var qty = Math.Min(affordable, mfg.MfgOutputStock);
+            if (qty <= 0) continue;
+
+            var cost = qty * mfg.MfgUnitPrice;
+
+            commercial.CashBalance -= cost;
+            commercial.MonthlyExpenses += cost;
+            mfg.CashBalance += cost;
+            mfg.MonthlyRevenue += cost;
+            mfg.MfgOutputStock -= qty;
+            mfg.MonthlySalesUnits += qty;
+
+            dollarBudget -= cost;
         }
 
-        // 2. Try regional reservoir (regional treasury is functionally infinite — no balance tracked)
-        if (unitsRemaining > 0)
+        // Imports fallback: unmet budget goes off-region at base + upcharge. Commercial loses the
+        // full upcharged amount (worse than local sourcing); the dollars leak from the economy.
+        // Founding phase waives the upcharge so shops can survive on imports while pop grows.
+        if (dollarBudget > 0)
         {
-            var regionAvailable = state.Region.GoodsReservoir.GetValueOrDefault(good);
-            var pull = Math.Min(regionAvailable, unitsRemaining);
-            if (pull > 0)
-            {
-                var cost = pull * unitPrice;
-                state.Region.GoodsReservoir[good] = regionAvailable - pull;
-                // Money to regional treasury (no balance tracked)
-                actualCost += cost;
-                unitsRemaining -= pull;
-            }
-        }
-
-        // 3. Imports at 25% upcharge — off-region world is always available
-        if (unitsRemaining > 0)
-        {
-            var importCost = (int)(unitsRemaining * unitPrice * (1 + TaxRates.ImportUpcharge));
-            actualCost += importCost;
-            unitsRemaining = 0;
-            // Money leaves the city economy (paid to off-region rights-holders)
-        }
-
-        // Deduct from commercial structures pro-rata
-        DistributeProRata(commercials, actualCost, isInflow: false);
-    }
-
-    /// <summary>Distribute an amount across a list of structures pro-rata (handles remainder).</summary>
-    private static void DistributeProRata(List<Structure> structures, int amount, bool isInflow)
-    {
-        if (structures.Count == 0 || amount == 0) return;
-        var per = amount / structures.Count;
-        var remainder = amount % structures.Count;
-        foreach (var s in structures)
-        {
-            var share = per + (remainder > 0 ? 1 : 0);
-            if (remainder > 0) remainder--;
-            if (isInflow)
-            {
-                s.CashBalance += share;
-                s.MonthlyRevenue += share;
-            }
-            else
-            {
-                s.CashBalance -= share;
-                s.MonthlyExpenses += share;
-            }
+            var upcharge = FoundingPhase.EffectiveImportUpcharge(state);
+            var importCost = dollarBudget + (int)(dollarBudget * upcharge);
+            commercial.CashBalance -= importCost;
+            commercial.MonthlyExpenses += importCost;
         }
     }
 }

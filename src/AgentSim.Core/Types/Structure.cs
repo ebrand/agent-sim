@@ -54,17 +54,43 @@ public sealed class Structure
     /// <summary>Expenses accumulated this month (reset at end of month). Used for profitability check (M5+).</summary>
     public int MonthlyExpenses { get; set; }
 
-    /// <summary>Internal buffer of raw materials (extractor output / processor input).</summary>
-    public Dictionary<RawMaterial, int> RawStorage { get; } = new();
+    /// <summary>
+    /// Internal buffer of raw natural-resource units (extractor output). Per the M16 model, this
+    /// is a single integer count per extractor — the resource type is implicit from the extractor's
+    /// `Industrial.NaturalResourceOf(type)`.
+    /// </summary>
+    public int RawUnitsInStock { get; set; }
 
-    /// <summary>Internal buffer of processed goods (processor output / manufacturer input).</summary>
-    public Dictionary<ProcessedGood, int> ProcessedStorage { get; } = new();
+    /// <summary>Internal buffer of processed mfg-inputs (processor output / manufacturer input).</summary>
+    public Dictionary<MfgInput, int> MfgInputStorage { get; } = new();
 
-    /// <summary>Internal buffer of manufactured goods (manufacturer output / storage holdings).</summary>
-    public Dictionary<ManufacturedGood, int> ManufacturedStorage { get; } = new();
+    /// <summary>Internal buffer of finished output units (manufacturer output). M16: manufacturers
+    /// produce generic sector-tagged units, not named products; a single int suffices.</summary>
+    public int MfgOutputStock { get; set; }
 
-    /// <summary>Capacity of internal storage for raw / processed / manufactured goods (single shared cap per type).</summary>
+    /// <summary>Total output units sold/pulled in the current month. Reset at month-end after
+    /// ProductionStaffingMechanic uses it to right-size the workforce.</summary>
+    public int MonthlySalesUnits { get; set; }
+
+    /// <summary>Capacity of internal storage for any goods buffer on this structure.</summary>
     public int InternalStorageCapacity { get; init; }
+
+    /// <summary>
+    /// M16: which commercial sector this structure participates in.
+    ///   - Commercial structures: the sector they belong to (Food / Retail / Entertainment / Construction).
+    ///   - Manufacturers: irrelevant — use ManufacturerSectors below.
+    /// </summary>
+    public CommercialSector? Sector { get; init; }
+
+    /// <summary>
+    /// M16: which sectors this manufacturer services. Set on manufacturer structures only.
+    /// (Empty for everything else.)
+    /// </summary>
+    public List<CommercialSector> ManufacturerSectors { get; } = new();
+
+    /// <summary>M16: per-unit selling price for this manufacturer's output. Same price regardless
+    /// of which sector pulls from it.</summary>
+    public int MfgUnitPrice { get; set; }
 
     /// <summary>Number of student seats (education structures). 0 for non-education.</summary>
     public int SeatCapacity { get; init; }

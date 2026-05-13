@@ -14,4 +14,10 @@ public sealed class Zone
 
     /// <summary>IDs of structures currently in this zone (built or under construction).</summary>
     public List<long> StructureIds { get; } = new();
+
+    /// <summary>
+    /// For commercial zones: the sector this zone serves. Auto-spawned shops in the zone are
+    /// tagged with this sector. Null for residential zones.
+    /// </summary>
+    public CommercialSector? Sector { get; init; }
 }

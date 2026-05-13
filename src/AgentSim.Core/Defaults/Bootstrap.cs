@@ -3,20 +3,11 @@ using AgentSim.Core.Types;
 namespace AgentSim.Core.Defaults;
 
 /// <summary>
-/// Bootstrap stock added to the regional goods reservoir when the first residential zone is created.
-/// Sized to build housing for the founding 50 settlers.
+/// Bootstrap settler burst. M16: bootstrap no longer stages construction goods — houses are spawned
+/// free (M17 will properly cost construction through the Construction commercial sector).
 /// </summary>
 public static class Bootstrap
 {
-    public static IReadOnlyDictionary<ManufacturedGood, int> BootstrapGoodsStock { get; } =
-        new Dictionary<ManufacturedGood, int>
-        {
-            [ManufacturedGood.BldgSupplies] = 200,
-            [ManufacturedGood.Concrete] = 100,
-            [ManufacturedGood.GlassGoods] = 40,
-            [ManufacturedGood.MetalGoods] = 0,
-        };
-
     /// <summary>Immigrant starting savings by education tier (post-bootstrap immigrants).</summary>
     public static int StartingSavings(EducationTier tier) => tier switch
     {
@@ -28,17 +19,18 @@ public static class Bootstrap
     };
 
     /// <summary>
-    /// Founders' starting savings — for the one-time bootstrap settler burst. Substantially
-    /// higher than regular immigrant savings to cover the 90-day window during which the player
-    /// builds the first commercial structure.
-    ///
-    /// Rationale: regular immigrant savings ($1,800–$6,000) are sized for "1 month of expenses"
-    /// assuming commercial infrastructure exists. Bootstrap settlers arrive before any commercial
-    /// exists; commercial takes 90 days to build; without a founders' bonus, all settlers would
-    /// run out of savings and emigrate before the first shop opens. The founders' bonus provides
-    /// ~5 months of cushion (rent + utilities = $1,000/mo for tier-1 housing; $5,000 ≈ 5 months).
-    ///
-    /// Flat across all tiers since pre-commercial expenses (rent + utilities, no COL) are the same.
+    /// Founders' starting savings — for the one-time bootstrap settler burst. Tier-scaled so
+    /// each tier survives ~5 months of pre-commercial expenses (rent + utility under the M18
+    /// per-tier rent model). Tuned so primary settlers (higher rent) don't emigrate sooner than
+    /// uneducated, preserving the "settlers survive ~5 months without jobs" invariant.
     /// </summary>
-    public const int FoundersStartingSavings = 5_000;
+    public static int FoundersStartingSavings(EducationTier tier) => tier switch
+    {
+        // Tuned for ~5 months of rent + utility + 50% sector COL while waiting for jobs.
+        EducationTier.Uneducated => 8_000,
+        EducationTier.Primary => 13_000,
+        EducationTier.Secondary => 17_000,
+        EducationTier.College => 26_000,
+        _ => throw new ArgumentOutOfRangeException(nameof(tier)),
+    };
 }

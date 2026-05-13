@@ -1,7 +1,9 @@
 namespace AgentSim.Core.Types;
 
 /// <summary>
-/// The top-level simulation entity. Holds environmental quality, the agent reservoir, and the regional goods reservoir.
+/// The top-level simulation entity. Holds environmental quality and the agent reservoir.
+/// M16: no named goods; per-good regional reservoirs are gone. Manufacturers buffer their
+/// own output and stop producing when full.
 /// </summary>
 public sealed class Region
 {
@@ -9,19 +11,6 @@ public sealed class Region
     public required double Nature { get; set; }
 
     public AgentReservoir AgentReservoir { get; } = new();
-
-    /// <summary>
-    /// Regional goods reservoir per manufactured good. Initialized empty; bootstrap stock is added when first
-    /// residential zone is created.
-    /// </summary>
-    public Dictionary<ManufacturedGood, int> GoodsReservoir { get; } = new();
-
-    /// <summary>
-    /// Regional reservoir of processed goods (M14): processors overflow their buffers to the region
-    /// when no local manufacturer is buying. Standalone manufacturers can pull from here as a
-    /// fallback before resorting to imports.
-    /// </summary>
-    public Dictionary<ProcessedGood, int> ProcessedGoodsReservoir { get; } = new();
 }
 
 /// <summary>

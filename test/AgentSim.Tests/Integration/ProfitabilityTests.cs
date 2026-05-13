@@ -223,7 +223,7 @@ public class ProfitabilityTests
         // makes structures slightly unprofitable. Test the state transition itself.)
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         var commZone = sim.CreateCommercialZone();
-        var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
+        var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop, CommercialSector.Retail);
         shop.ConstructionTicks = shop.RequiredConstructionTicks;
 
         // Pre-existing warning from a prior unprofitable month
@@ -244,7 +244,7 @@ public class ProfitabilityTests
         // Focused: structure with prior warning + this month also unprofitable → inactive.
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         var commZone = sim.CreateCommercialZone();
-        var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
+        var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop, CommercialSector.Retail);
         shop.ConstructionTicks = shop.RequiredConstructionTicks;
 
         shop.UnprofitableWarning = true;
@@ -262,7 +262,7 @@ public class ProfitabilityTests
     {
         var sim = Sim.Create(new SimConfig { Seed = 42 });
         var commZone = sim.CreateCommercialZone();
-        var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
+        var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop, CommercialSector.Retail);
         shop.ConstructionTicks = shop.RequiredConstructionTicks;
 
         Assert.False(shop.UnprofitableWarning);  // no prior warning

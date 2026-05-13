@@ -5,9 +5,9 @@ using AgentSim.Core.Types;
 namespace AgentSim.Tests.Integration;
 
 /// <summary>
-/// M14c: Agriculture diversification — an Agriculture HQ can fund Farm/Mill (crops/grain),
-/// Ranch/Slaughterhouse (livestock/meat), and CottonFarm/Ginnery (cotton). Manufacturers downstream
-/// consume the resulting processed goods.
+/// M14c/M16: Agriculture diversification — an Agriculture HQ can fund Farm/Mill (flour),
+/// Ranch/Slaughterhouse (meat), and CottonFarm/Ginnery (cotton). Manufacturers downstream
+/// consume the resulting MfgInputs.
 /// </summary>
 public class AgricultureDiversificationTests
 {
@@ -17,7 +17,7 @@ public class AgricultureDiversificationTests
         var commZone = sim.CreateCommercialZone();
         var hq = sim.PlaceCorporateHq(commZone.Id, IndustryType.Agriculture, "AgriCo");
         hq.ConstructionTicks = hq.RequiredConstructionTicks;
-        hq.CashBalance = 5_000_000;  // overfund for test convenience
+        hq.CashBalance = 5_000_000;
         return (sim, hq);
     }
 
@@ -68,44 +68,44 @@ public class AgricultureDiversificationTests
     }
 
     [Fact]
-    public void Ranch_ProducesLivestock()
+    public void Ranch_ProducesRawUnits()
     {
         var (sim, hq) = NewAgricultureSim();
         var ranch = FastBuild(sim, StructureType.Ranch, hq.Id);
 
         sim.Tick(1);
 
-        var livestock = ranch.RawStorage.GetValueOrDefault(RawMaterial.Livestock);
-        Assert.True(livestock > 0, $"Ranch should produce livestock. Got {livestock}.");
+        Assert.True(ranch.RawUnitsInStock > 0,
+            $"Ranch should produce raw units. Got {ranch.RawUnitsInStock}.");
     }
 
     [Fact]
-    public void Slaughterhouse_ProducesMeat_FromLivestock()
+    public void Slaughterhouse_ProducesMeat_FromRanchUnits()
     {
         var (sim, hq) = NewAgricultureSim();
         FastBuild(sim, StructureType.Ranch, hq.Id);
         var slaughter = FastBuild(sim, StructureType.Slaughterhouse, hq.Id);
 
-        sim.Tick(5);  // ranch → livestock → slaughterhouse → meat
+        sim.Tick(5);
 
-        var meat = slaughter.ProcessedStorage.GetValueOrDefault(ProcessedGood.Meat);
-        Assert.True(meat > 0, $"Slaughterhouse should produce meat. Got {meat}.");
+        var meat = slaughter.MfgInputStorage.GetValueOrDefault(MfgInput.Meat);
+        Assert.True(meat > 0, $"Slaughterhouse should produce Meat. Got {meat}.");
     }
 
     [Fact]
-    public void CottonFarm_ProducesRawCotton()
+    public void CottonFarm_ProducesRawUnits()
     {
         var (sim, hq) = NewAgricultureSim();
         var cottonFarm = FastBuild(sim, StructureType.CottonFarm, hq.Id);
 
         sim.Tick(1);
 
-        var rawCotton = cottonFarm.RawStorage.GetValueOrDefault(RawMaterial.RawCotton);
-        Assert.True(rawCotton > 0, $"CottonFarm should produce raw cotton. Got {rawCotton}.");
+        Assert.True(cottonFarm.RawUnitsInStock > 0,
+            $"CottonFarm should produce raw units. Got {cottonFarm.RawUnitsInStock}.");
     }
 
     [Fact]
-    public void Ginnery_ProducesCotton_FromRawCotton()
+    public void Ginnery_ProducesCotton_FromCottonFarm()
     {
         var (sim, hq) = NewAgricultureSim();
         FastBuild(sim, StructureType.CottonFarm, hq.Id);
@@ -113,15 +113,13 @@ public class AgricultureDiversificationTests
 
         sim.Tick(5);
 
-        var cotton = ginnery.ProcessedStorage.GetValueOrDefault(ProcessedGood.Cotton);
-        Assert.True(cotton > 0, $"Ginnery should produce cotton. Got {cotton}.");
+        var cotton = ginnery.MfgInputStorage.GetValueOrDefault(MfgInput.Cotton);
+        Assert.True(cotton > 0, $"Ginnery should produce Cotton. Got {cotton}.");
     }
 
     [Fact]
     public void ClothingFactory_RequiresCottonAndPlastic()
     {
-        // Verify the new ClothingFactory recipe (Cotton + Plastic). Need Cotton chain
-        // (CottonFarm + Ginnery) AND Plastic chain (OilWell + PlasticPlant).
         var (sim, agHq) = NewAgricultureSim();
         FastBuild(sim, StructureType.CottonFarm, agHq.Id);
         FastBuild(sim, StructureType.Ginnery, agHq.Id);
@@ -140,15 +138,13 @@ public class AgricultureDiversificationTests
 
         sim.Tick(30);
 
-        var produced = clothing.ManufacturedStorage.GetValueOrDefault(ManufacturedGood.Clothing);
-        Assert.True(produced > 0,
-            $"ClothingFactory should produce with both Cotton and Plastic chains in place. Got {produced}.");
+        Assert.True(clothing.MfgOutputStock > 0,
+            $"ClothingFactory should produce with both Cotton and Plastic chains in place. Got {clothing.MfgOutputStock}.");
     }
 
     [Fact]
-    public void FoodPackingPlant_RequiresMeatAndOtherInputs()
+    public void FoodPackingPlant_RequiresFlourMeatPlasticGlass()
     {
-        // FoodPackingPlant recipe: Grain + Meat + Plastic + Silicate. All four chains needed.
         var (sim, agHq) = NewAgricultureSim();
         FastBuild(sim, StructureType.Farm, agHq.Id);
         FastBuild(sim, StructureType.Mill, agHq.Id);
@@ -176,17 +172,14 @@ public class AgricultureDiversificationTests
 
         sim.Tick(30);
 
-        var produced = packer.ManufacturedStorage.GetValueOrDefault(ManufacturedGood.Food);
-        Assert.True(produced > 0,
-            $"FoodPackingPlant should produce with full input chain. Got {produced}.");
+        Assert.True(packer.MfgOutputStock > 0,
+            $"FoodPackingPlant should produce with full input chain. Got {packer.MfgOutputStock}.");
     }
 
     [Fact]
     public void AgricultureHq_StartingCash_CoversFullChain()
     {
-        // Starting cash = 2× sum of all 6 Agriculture chain construction costs.
         var (sim, hq) = NewAgricultureSim();
-        // Override the test's overfunded balance to inspect the default.
         var fresh = sim.PlaceCorporateHq(sim.State.City.Zones.Values.First().Id,
             IndustryType.Agriculture, "AgriCo2");
         var expected = 2 * (Construction.Cost(StructureType.Farm)

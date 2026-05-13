@@ -16,17 +16,22 @@ namespace AgentSim.Core.Defaults;
 /// </summary>
 public static class Upkeep
 {
-    public const int PoliceStation = 15_000;
-    public const int FireStation = 15_000;
-    public const int TownHall = 50_000;
-    public const int Clinic = 25_000;
-    public const int Hospital = 120_000;
-    public const int PrimarySchool = 25_000;
-    public const int SecondarySchool = 50_000;
-    public const int College = 100_000;
-    public const int Generator = 30_000;
-    public const int Well = 20_000;
-    public const int AffordableHousing = 10_000;
+    // Calibration: upkeep cut ~70-75% so small (50-pop) cities can run at managed deficit, not
+    // catastrophic. With M-cal civic employment, treasury also pays wages — total civic burden
+    // (upkeep + wages - rent+util+tax recapture) must stay within the bleed budget.
+    public const int PoliceStation = 4_000;
+    public const int FireStation = 4_000;
+    public const int TownHall = 15_000;
+    public const int Clinic = 7_000;
+    public const int Hospital = 30_000;
+    public const int PrimarySchool = 7_000;
+    public const int SecondarySchool = 15_000;
+    public const int College = 30_000;
+    public const int Generator = 8_000;
+    public const int Well = 5_000;
+    public const int ElectricityDistribution = 3_000;
+    public const int WaterDistribution = 2_000;
+    public const int AffordableHousing = 4_000;
 
     /// <summary>Monthly upkeep cost for the given structure type. 0 for non-treasury-funded types.</summary>
     public static int MonthlyCost(StructureType type) => type switch
@@ -41,6 +46,8 @@ public static class Upkeep
         StructureType.College => College,
         StructureType.Generator => Generator,
         StructureType.Well => Well,
+        StructureType.ElectricityDistribution => ElectricityDistribution,
+        StructureType.WaterDistribution => WaterDistribution,
         StructureType.AffordableHousing => AffordableHousing,
         _ => 0,
     };

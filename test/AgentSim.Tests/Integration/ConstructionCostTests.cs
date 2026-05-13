@@ -40,7 +40,7 @@ public class ConstructionCostTests
         var commZone = sim.CreateCommercialZone();
         var before = sim.State.City.TreasuryBalance;
 
-        sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
+        sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop, CommercialSector.Retail);
 
         Assert.Equal(before - Construction.Shop, sim.State.City.TreasuryBalance);
     }
@@ -77,7 +77,7 @@ public class ConstructionCostTests
         var commZone = sim.CreateCommercialZone();
 
         Assert.Throws<InvalidOperationException>(() =>
-            sim.PlaceCommercialStructure(commZone.Id, StructureType.Marketplace));
+            sim.PlaceCommercialStructure(commZone.Id, StructureType.Marketplace, CommercialSector.Retail));
     }
 
     [Fact]
@@ -130,7 +130,7 @@ public class ConstructionCostTests
             + Construction.Cost(StructureType.PrimarySchool)
             + Construction.Cost(StructureType.Generator)
             + Construction.Cost(StructureType.Well);
-        Assert.Equal(1_150_000, totalConstruction);  // sanity-check on the calibration
+        Assert.Equal(310_000, totalConstruction);  // sanity-check on the M-cal civic-upkeep calibration
         Assert.Equal(1_800_000 - totalConstruction, sim.State.City.TreasuryBalance);
         Assert.True(sim.State.City.TreasuryBalance > 0);
     }

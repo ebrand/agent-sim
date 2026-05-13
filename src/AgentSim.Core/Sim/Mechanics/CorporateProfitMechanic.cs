@@ -21,6 +21,10 @@ public static class CorporateProfitMechanic
 {
     public static void SweepAndTax(SimState state)
     {
+        // Founding phase: waive corporate profit + externality tax so industrial chains aren't
+        // taxed while they're ramping up.
+        if (FoundingPhase.IsActive(state)) return;
+
         var hqs = state.City.Structures.Values
             .Where(s => s.Type == StructureType.CorporateHq)
             .ToList();

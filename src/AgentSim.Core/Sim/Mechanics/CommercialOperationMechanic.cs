@@ -18,15 +18,19 @@ public static class CommercialOperationMechanic
         foreach (var structure in state.City.Structures.Values)
         {
             if (!structure.Operational || structure.Inactive) continue;
-            if (structure.Category == StructureCategory.Commercial
-                || structure.Category == StructureCategory.IndustrialExtractor
-                || structure.Category == StructureCategory.IndustrialProcessor
-                || structure.Category == StructureCategory.IndustrialManufacturer)
+            var cat = structure.Category;
+            var employsWorkers = cat == StructureCategory.Commercial
+                || cat == StructureCategory.IndustrialExtractor
+                || cat == StructureCategory.IndustrialProcessor
+                || cat == StructureCategory.IndustrialManufacturer
+                || cat == StructureCategory.Civic
+                || cat == StructureCategory.Healthcare
+                || cat == StructureCategory.Education
+                || cat == StructureCategory.Utility;
+            if (!employsWorkers) continue;
+            if (!AllSlotsFilled(structure))
             {
-                if (!AllSlotsFilled(structure))
-                {
-                    JobAssignmentMechanic.FillJobSlots(state, structure);
-                }
+                JobAssignmentMechanic.FillJobSlots(state, structure);
             }
         }
     }

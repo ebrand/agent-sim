@@ -1,45 +1,48 @@
 namespace AgentSim.Core.Types;
 
 /// <summary>
-/// Raw materials produced by industrial extractors. Consumed by processors to make processed goods.
-///
-/// Wood = raw timber (logs) from ForestExtractor.
-/// IronOre = mined ore from Mine.
-/// Crops = harvested plant matter from Farm.
-/// Rock = quarried stone.
-/// Sand = pit sand.
-/// Coal = mined coal.
-/// Petroleum = crude oil from OilWell (M14b).
+/// Natural resources extracted from the world. Per the M16 supply-chain model: there's no
+/// distinct named good between the extractor and the processor — the processor just pulls from
+/// the natural resource pool via its extractor. This enum identifies which natural resource an
+/// extractor pulls from, used to match extractors to processors (a Sawmill only pulls from
+/// Forest extractors, etc.).
 /// </summary>
-public enum RawMaterial
+public enum NaturalResource
 {
-    Wood,
-    IronOre,
-    Crops,
-    Rock,
+    Forest,
+    Ore,
+    ArableLand,      // farms, ranches, cotton-farms all draw from arable land
+    Stone,
     Sand,
     Petroleum,
-    Livestock,      // M14c: cattle, poultry, etc. from a Ranch
-    RawCotton,      // M14c: unprocessed cotton from a CottonFarm
 }
 
 /// <summary>
-/// Processed goods produced by industrial processors. Consumed by manufacturers (or directly by
-/// commercial / utilities). M14b additions: Plastic (from Petroleum), Pulp (from Wood),
-/// Glass (kept as Silicate, semantically equivalent).
+/// Manufacturer inputs — what processors produce and manufacturers consume. Plus a few that go
+/// directly to civic structures (Fuel to oil-generator; Water as a special-case via water-pump).
+///
+/// Renames from prior ProcessedGood enum (per the M16 diagram):
+///   Lumber  → Wood
+///   Steel   → Steel    (unchanged but kept)
+///   Grain   → Flour
+///   Textiles → (dropped — never produced)
+///   Silicate → Glass
+///   New: Vegetables (from Harvester), Rock (from StoneCutter)
 /// </summary>
-public enum ProcessedGood
+public enum MfgInput
 {
-    Lumber,
-    Steel,
-    Grain,
-    Textiles,    // deprecated post-M14c — ClothingFactory now uses Cotton; kept in enum for save-compat
-    Aggregate,
-    Silicate,
-    Fuel,
-    Plastic,
+    Wood,
     Pulp,
-    Meat,        // M14c: from Slaughterhouse processing Livestock
-    Cotton,      // M14c: from Ginnery processing RawCotton
-    Chalk,       // M14d: from ChalkPlant processing Rock — input to ConcretePlant for cement
+    Steel,
+    Flour,
+    Vegetables,
+    Meat,
+    Cotton,
+    Rock,
+    Aggregate,
+    Chalk,
+    Glass,
+    Plastic,
+    Fuel,
+    Water,
 }

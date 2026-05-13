@@ -44,7 +44,8 @@ public class MonthlySettlementTests
 
         sim.Tick(30);
 
-        Assert.Equal(50 * (800 + 200), sim.State.City.TreasuryBalance);
+        // 30 Uneducated × ($800 rent + $80 util) + 20 Primary × ($1,400 rent + $140 util) = $57,200.
+        Assert.Equal(30 * (450 + 45) + 20 * (800 + 80), sim.State.City.TreasuryBalance);
     }
 
     [Fact]
@@ -57,7 +58,8 @@ public class MonthlySettlementTests
 
         // No commercial → no COL. Settler savings after one month = founders bonus - rent - utilities.
         var uneducated = sim.State.City.Agents.Values.First(a => a.EducationTier == EducationTier.Uneducated);
-        Assert.Equal(Bootstrap.FoundersStartingSavings - 800 - 200, uneducated.Savings);
+        // Uneducated: $5000 - $800 rent - $80 utility (10% of rent) = $4120
+        Assert.Equal(Bootstrap.FoundersStartingSavings(EducationTier.Uneducated) - 450 - 45, uneducated.Savings);
     }
 
     [Fact]
@@ -68,7 +70,8 @@ public class MonthlySettlementTests
 
         sim.Tick(30);  // full month
 
-        Assert.Equal(50 * (800 + 200), sim.State.City.TreasuryBalance);
+        // 30 Uneducated × ($800 rent + $80 util) + 20 Primary × ($1,400 rent + $140 util) = $57,200.
+        Assert.Equal(30 * (450 + 45) + 20 * (800 + 80), sim.State.City.TreasuryBalance);
     }
 
     [Fact]
@@ -103,14 +106,19 @@ public class MonthlySettlementTests
     }
 
     [Fact]
-    public void AfterSixMonths_SettlersEmigrate_NoJobs()
+    public void After18Months_SettlersEmigrate_NoJobs()
     {
-        // End of month 6: $5,000 - 6 × $1,000 = -$1,000 → fail emigration check → no AH → emigrate.
-        // Use full-cap reservoir to disable births; this test only cares about settler behavior.
-        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
+        // Founders bonus + lower rents stretch to ~14-16 months. By month 18 all settlers
+        // have exhausted savings and emigrated.
+        var sim = Sim.Create(new SimConfig
+        {
+            Seed = 42,
+            InitialReservoirSize = 60_000,
+            ImmigrationEnabled = false,
+        });
         sim.CreateResidentialZone();
 
-        sim.Tick(30 * 6);  // 6 months
+        sim.Tick(30 * 18);
 
         Assert.Equal(0, sim.State.City.Population);
     }
@@ -118,22 +126,28 @@ public class MonthlySettlementTests
     [Fact]
     public void EmigratedAgents_ReturnToReservoir()
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, InitialReservoirSize = 60_000 });
+        var sim = Sim.Create(new SimConfig
+        {
+            Seed = 42,
+            InitialReservoirSize = 60_000,
+            ImmigrationEnabled = false,
+        });
         sim.CreateResidentialZone();
 
         Assert.Equal(60_000 - 50, sim.State.Region.AgentReservoir.Total);
 
-        sim.Tick(30 * 6);  // 6 months — all settlers emigrate
+        sim.Tick(30 * 18);
 
-        // All 50 returned to reservoir at their education tiers (30 uneducated + 20 primary)
         Assert.Equal(60_000, sim.State.Region.AgentReservoir.Total);
     }
 
     [Fact]
-    public void Month5_AllSettlersHaveZeroSavings_ButStillInCity()
+    public void Month5_AllSettlersStillInCity_LowSavings()
     {
-        // End of month 5: $5,000 - 5 × $1,000 = $0 (non-negative — passes check)
-        // Disable births (full reservoir) and service emigration; test focuses on settler insolvency only.
+        // M18: tier-scaled bonus tuned so both tiers still have non-negative savings at end of m5.
+        //   Uneducated: $5000 - 5 × $880  = $600
+        //   Primary:    $8000 - 5 × $1540 = $300
+        // Disable births and service emigration; test focuses on settler insolvency only.
         var sim = Sim.Create(new SimConfig
         {
             Seed = 42,
@@ -142,10 +156,11 @@ public class MonthlySettlementTests
         });
         sim.CreateResidentialZone();
 
-        sim.Tick(30 * 5);  // 5 months
+        sim.Tick(30 * 5);
 
         Assert.Equal(50, sim.State.City.Population);
-        Assert.All(sim.State.City.Agents.Values, a => Assert.Equal(0, a.Savings));
+        Assert.All(sim.State.City.Agents.Values, a => Assert.True(a.Savings >= 0,
+            $"All settlers should have non-negative savings at end of m5. Got tier={a.EducationTier} savings={a.Savings}."));
     }
 
     [Fact]
@@ -158,7 +173,8 @@ public class MonthlySettlementTests
 
         sim.Tick(30);
 
-        Assert.Equal(50 * (800 + 200), sim.State.City.TreasuryBalance);  // no income tax added
+        // 30 Uneducated × ($800 rent + $80 util) + 20 Primary × ($1,400 rent + $140 util) = $57,200.
+        Assert.Equal(30 * (450 + 45) + 20 * (800 + 80), sim.State.City.TreasuryBalance);  // no income tax added
     }
 
     [Fact]

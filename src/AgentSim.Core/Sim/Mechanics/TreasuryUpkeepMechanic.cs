@@ -24,6 +24,10 @@ public static class TreasuryUpkeepMechanic
     public static void PayMonthlyUpkeep(SimState state)
     {
         var totalUpkeep = ComputeTotalUpkeep(state);
+        if (FoundingPhase.IsActive(state))
+        {
+            totalUpkeep = (int)(totalUpkeep * FoundingPhase.TreasuryUpkeepFactor);
+        }
         if (totalUpkeep <= 0)
         {
             state.City.UpkeepFundingFraction = 1.0;

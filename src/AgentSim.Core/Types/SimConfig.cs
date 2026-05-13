@@ -32,4 +32,17 @@ public sealed record SimConfig
     /// mechanics from random service-pressure emigration.
     /// </summary>
     public bool ServiceEmigrationEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Whether monthly immigration (M-calibration) is active. Default true — vacant labor demand
+    /// attracts agents from the reservoir each month, bounded by housing capacity. Disable in tests
+    /// that need a static post-bootstrap population.
+    /// </summary>
+    public bool ImmigrationEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Whether founding-phase subsidies (first 12 months) are active. Default true. Disable
+    /// in tests that need the standard tax/upkeep flow regardless of sim age.
+    /// </summary>
+    public bool FoundingPhaseEnabled { get; init; } = true;
 }

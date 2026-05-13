@@ -4,59 +4,46 @@ using AgentSim.Core.Types;
 namespace AgentSim.Core.Sim.Mechanics;
 
 /// <summary>
-/// Industrial production runs each tick. Walks the chain backwards (downstream pulls from upstream):
+/// Industrial production runs each tick. M16 model:
+///   - Extractor: produces raw units (single int RawUnitsInStock).
+///   - Processor: pulls raw units from a matching-NaturalResource extractor; produces an MfgInput
+///     into MfgInputStorage. Processor pays its own HQ (no cash flow same-HQ to upstream extractor).
+///   - Manufacturer: pulls MfgInputs from any processor (paying processor's HQ at MfgInputPrice).
+///     Produces a generic sector-tagged output unit into MfgOutputStock.
 ///
-///   manufacturer ← processor ← extractor
-///
-/// Each structure's daily output = MaxOutputPerDay × (jobs_filled / total_slots), limited by:
-///   - Input availability
-///   - Output buffer space (internal storage capacity)
-///
-/// M13 consolidated HQ chain (extractor + processor under one HQ): no cash flow between same-HQ
-/// subs; goods xfer only. Revenue routes to the HQ via CreditRevenueToHqOrSelf.
-///
-/// M14: Manufacturer is a standalone industrial entity (not HQ-owned). When a Mfg pulls processed
-/// goods from a processor, it pays the processor's HQ at the processed-good price — real cash
-/// transaction between two independent economic entities. Storage has been removed; manufacturers
-/// sell directly to commercial (via CostOfLivingMechanic) or to the region as overflow.
+/// Overflow: there is no region spill for output. If MfgOutputStock is full, the manufacturer
+/// simply doesn't produce more that tick. Commercial-sector demand drains MfgOutputStock via
+/// CostOfLivingMechanic.
 /// </summary>
 public static class IndustrialProductionMechanic
 {
-    /// <summary>Runs each tick. Order matters: pull downstream first.</summary>
     public static void RunDaily(SimState state)
     {
         ManufacturerProduce(state);
         ProcessorProduce(state);
         ExtractorProduce(state);
-        ProcessorSellOverflowToRegion(state);
-        ManufacturerSellOverflowToRegion(state);
     }
 
-    // === Extractor: produce raw material into own buffer ===
     private static void ExtractorProduce(SimState state)
     {
         foreach (var structure in state.City.Structures.Values)
         {
             if (!Industrial.IsExtractor(structure.Type)) continue;
             if (!structure.Operational || structure.Inactive) continue;
-            var output = Industrial.ExtractorOutput(structure.Type);
-            if (output is null) continue;
+            if (Industrial.ExtractorSource(structure.Type) is null) continue;
 
             var staffing = StaffingFraction(structure);
             var produced = (int)(Industrial.MaxOutputPerDay * staffing);
             if (produced <= 0) continue;
 
-            // Limited by remaining internal capacity
-            var currentStored = structure.RawStorage.GetValueOrDefault(output.Value);
-            var canStore = Math.Max(0, structure.InternalStorageCapacity - currentStored);
+            var canStore = Math.Max(0, structure.InternalStorageCapacity - structure.RawUnitsInStock);
             var actualProduced = Math.Min(produced, canStore);
             if (actualProduced <= 0) continue;
 
-            structure.RawStorage[output.Value] = currentStored + actualProduced;
+            structure.RawUnitsInStock += actualProduced;
         }
     }
 
-    // === Processor: pull raw materials from any extractor's buffer, produce processed good ===
     private static void ProcessorProduce(SimState state)
     {
         foreach (var structure in state.City.Structures.Values)
@@ -65,82 +52,49 @@ public static class IndustrialProductionMechanic
             if (!structure.Operational || structure.Inactive) continue;
             var recipe = Industrial.ProcessorRecipe(structure.Type);
             if (recipe is null) continue;
-            var (input, output) = recipe.Value;
+            var (source, output) = recipe.Value;
 
             var staffing = StaffingFraction(structure);
             var maxProduce = (int)(Industrial.MaxOutputPerDay * staffing);
             if (maxProduce <= 0) continue;
 
-            // Limited by output capacity in processor's own buffer
-            var currentOutput = structure.ProcessedStorage.GetValueOrDefault(output);
+            var currentOutput = structure.MfgInputStorage.GetValueOrDefault(output);
             var outputCapacityRemaining = Math.Max(0, structure.InternalStorageCapacity - currentOutput);
             maxProduce = Math.Min(maxProduce, outputCapacityRemaining);
             if (maxProduce <= 0) continue;
 
-            // Pull raw materials from extractors (1:1 ratio for processors)
-            var rawPrice = Industrial.RawMaterialPrice(input);
-            var unitsPulled = PullRawMaterial(state, structure, input, maxProduce, rawPrice);
+            // Pull raw units from extractors with matching NaturalResource (1:1).
+            var unitsPulled = PullRawUnits(state, source, maxProduce);
             if (unitsPulled <= 0) continue;
 
-            structure.ProcessedStorage[output] = currentOutput + unitsPulled;
+            structure.MfgInputStorage[output] = currentOutput + unitsPulled;
         }
     }
 
-    // === Manufacturer: pull processed goods from processors, produce manufactured good ===
     private static void ManufacturerProduce(SimState state)
     {
-        // M14e: two-pass ordering so manufacturers that consume only processed goods produce
-        // first, then manufacturers that consume other manufacturers' output. This handles
-        // chain depth of 2 (e.g. PaperMill → Printer) in a single tick. For deeper chains a
-        // proper topological sort would be needed.
-        var mfgs = state.City.Structures.Values
-            .Where(s => Industrial.IsManufacturer(s.Type) && s.Operational && !s.Inactive)
-            .ToList();
-
-        // Pass 1: pure-processed-input manufacturers.
-        foreach (var m in mfgs)
+        foreach (var structure in state.City.Structures.Values)
         {
-            var recipe = Industrial.ManufacturerRecipe(m.Type);
+            if (!Industrial.IsManufacturer(structure.Type)) continue;
+            if (!structure.Operational || structure.Inactive) continue;
+            var recipe = Industrial.ManufacturerRecipe(structure.Type);
             if (recipe is null) continue;
-            if (recipe.Value.ManufacturedInputs.Count > 0) continue;
-            ProduceOne(state, m, recipe.Value);
-        }
-
-        // Pass 2: manufacturers that also consume other manufacturers' output.
-        foreach (var m in mfgs)
-        {
-            var recipe = Industrial.ManufacturerRecipe(m.Type);
-            if (recipe is null) continue;
-            if (recipe.Value.ManufacturedInputs.Count == 0) continue;
-            ProduceOne(state, m, recipe.Value);
+            ProduceOne(state, structure, recipe.Value);
         }
     }
 
-    private static void ProduceOne(
-        SimState state,
-        Structure structure,
-        (IReadOnlyList<(ProcessedGood Input, int Units)> ProcessedInputs,
-         IReadOnlyList<(ManufacturedGood Input, int Units)> ManufacturedInputs,
-         ManufacturedGood Output) recipe)
+    private static void ProduceOne(SimState state, Structure mfg, Industrial.MfgRecipe recipe)
     {
-        var staffing = StaffingFraction(structure);
+        var staffing = StaffingFraction(mfg);
         var maxByStaffing = (int)(Industrial.MaxOutputPerDay * staffing);
         if (maxByStaffing <= 0) return;
 
-        var currentOutput = structure.ManufacturedStorage.GetValueOrDefault(recipe.Output);
-        var maxByCapacity = Math.Max(0, structure.InternalStorageCapacity - currentOutput);
+        var maxByCapacity = Math.Max(0, mfg.InternalStorageCapacity - mfg.MfgOutputStock);
 
-        // Bottleneck across all inputs (processed + manufactured).
         int maxByInputs = int.MaxValue;
-        foreach (var (input, units) in recipe.ProcessedInputs)
+        foreach (var (input, units) in recipe.Inputs)
         {
-            var available = AvailableProcessedAcrossProcessors(state, input);
-            var canProduce = available / units;
-            if (canProduce < maxByInputs) maxByInputs = canProduce;
-        }
-        foreach (var (input, units) in recipe.ManufacturedInputs)
-        {
-            var available = AvailableManufacturedAcrossManufacturers(state, input, structure.Id);
+            var available = AvailableMfgInputAcrossProcessors(state, input);
             var canProduce = available / units;
             if (canProduce < maxByInputs) maxByInputs = canProduce;
         }
@@ -148,148 +102,31 @@ public static class IndustrialProductionMechanic
         var actualOutput = Math.Min(Math.Min(maxByStaffing, maxByCapacity), maxByInputs);
         if (actualOutput <= 0) return;
 
-        // Pull each processed input (pays processor's HQ).
-        foreach (var (input, units) in recipe.ProcessedInputs)
+        foreach (var (input, units) in recipe.Inputs)
         {
             var needed = actualOutput * units;
-            var price = Industrial.ProcessedGoodPrice(input);
-            PullProcessedGood(state, structure, input, needed, price);
-        }
-        // Pull each manufactured input (pays the producing manufacturer directly — both are standalone).
-        foreach (var (input, units) in recipe.ManufacturedInputs)
-        {
-            var needed = actualOutput * units;
-            var price = Industrial.ManufacturedGoodPrice(input);
-            PullManufacturedGood(state, structure, input, needed, price);
+            var price = Industrial.MfgInputPrice(input);
+            PullMfgInput(state, mfg, input, needed, price);
         }
 
-        structure.ManufacturedStorage[recipe.Output] = currentOutput + actualOutput;
+        mfg.MfgOutputStock += actualOutput;
     }
 
-    /// <summary>Sum the available stock of a processed good across all operational processors.</summary>
-    private static int AvailableProcessedAcrossProcessors(SimState state, ProcessedGood good)
+    private static int AvailableMfgInputAcrossProcessors(SimState state, MfgInput input)
     {
         int total = 0;
         foreach (var p in state.City.Structures.Values)
         {
             if (!Industrial.IsProcessor(p.Type)) continue;
             if (!p.Operational || p.Inactive) continue;
-            total += p.ProcessedStorage.GetValueOrDefault(good);
+            total += p.MfgInputStorage.GetValueOrDefault(input);
         }
         return total;
     }
 
     /// <summary>
-    /// Sum the available stock of a manufactured good across all operational manufacturers,
-    /// excluding the buyer itself (a Mfg shouldn't consume its own output).
-    /// </summary>
-    private static int AvailableManufacturedAcrossManufacturers(SimState state, ManufacturedGood good, long excludeId)
-    {
-        int total = 0;
-        foreach (var m in state.City.Structures.Values)
-        {
-            if (m.Id == excludeId) continue;
-            if (!Industrial.IsManufacturer(m.Type)) continue;
-            if (!m.Operational || m.Inactive) continue;
-            total += m.ManufacturedStorage.GetValueOrDefault(good);
-        }
-        return total;
-    }
-
-    /// <summary>
-    /// Pull a manufactured good from any other manufacturer's buffer. The buyer pays the seller
-    /// directly at the manufactured-good price (both are standalone entities; no HQ in the middle).
-    /// </summary>
-    private static int PullManufacturedGood(SimState state, Structure buyer, ManufacturedGood good, int unitsRequested, int unitPrice)
-    {
-        var unitsPulled = 0;
-        foreach (var seller in state.City.Structures.Values)
-        {
-            if (seller.Id == buyer.Id) continue;
-            if (!Industrial.IsManufacturer(seller.Type)) continue;
-            if (!seller.Operational || seller.Inactive) continue;
-            if (unitsPulled >= unitsRequested) break;
-
-            var available = seller.ManufacturedStorage.GetValueOrDefault(good);
-            if (available <= 0) continue;
-
-            var qty = Math.Min(available, unitsRequested - unitsPulled);
-            var total = qty * unitPrice;
-
-            buyer.CashBalance -= total;
-            buyer.MonthlyExpenses += total;
-            seller.CashBalance += total;
-            seller.MonthlyRevenue += total;
-
-            seller.ManufacturedStorage[good] = available - qty;
-            unitsPulled += qty;
-        }
-        return unitsPulled;
-    }
-
-    // === Processor sells overflow to regional treasury at full processed price ===
-    // M14: if processors fill up their buffers (no manufacturer pulls), they sell direct to the
-    // region. Revenue routes to the processor's owning HQ.
-    private static void ProcessorSellOverflowToRegion(SimState state)
-    {
-        foreach (var processor in state.City.Structures.Values)
-        {
-            if (!Industrial.IsProcessor(processor.Type)) continue;
-            if (!processor.Operational || processor.Inactive) continue;
-
-            var keysSnapshot = processor.ProcessedStorage.Keys.ToList();
-            foreach (var good in keysSnapshot)
-            {
-                var qty = processor.ProcessedStorage[good];
-                if (qty <= 0) continue;
-
-                // Only spill to region when the buffer is nearly full — otherwise let manufacturers
-                // have first crack via the daily ManufacturerProduce pull.
-                if (qty < processor.InternalStorageCapacity) continue;
-
-                var unitPrice = Industrial.ProcessedGoodPrice(good);
-                var sellPrice = unitPrice * qty;
-
-                CreditRevenueToHqOrSelf(state, processor, sellPrice);
-                processor.ProcessedStorage[good] = 0;
-                state.Region.ProcessedGoodsReservoir.TryGetValue(good, out var existing);
-                state.Region.ProcessedGoodsReservoir[good] = existing + qty;
-            }
-        }
-    }
-
-    // === Manufacturer sells overflow to regional treasury at full manufactured price ===
-    // M14: manufacturers spill their own buffer to the region when full. Manufacturers are
-    // standalone (no HQ ownership), so revenue accrues to their own CashBalance.
-    private static void ManufacturerSellOverflowToRegion(SimState state)
-    {
-        foreach (var manufacturer in state.City.Structures.Values)
-        {
-            if (!Industrial.IsManufacturer(manufacturer.Type)) continue;
-            if (!manufacturer.Operational || manufacturer.Inactive) continue;
-
-            var keysSnapshot = manufacturer.ManufacturedStorage.Keys.ToList();
-            foreach (var good in keysSnapshot)
-            {
-                var qty = manufacturer.ManufacturedStorage[good];
-                if (qty <= 0) continue;
-                if (qty < manufacturer.InternalStorageCapacity) continue;  // only spill at full
-
-                var unitPrice = Industrial.ManufacturedGoodPrice(good);
-                var sellPrice = unitPrice * qty;
-
-                manufacturer.CashBalance += sellPrice;
-                manufacturer.MonthlyRevenue += sellPrice;
-                manufacturer.ManufacturedStorage[good] = 0;
-                state.Region.GoodsReservoir.TryGetValue(good, out var existing);
-                state.Region.GoodsReservoir[good] = existing + qty;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Credit revenue to the structure's owning HQ if it has one (M13 consolidated industrial
-    /// model). Falls back to the structure itself for legacy / orphan industrial structures.
+    /// Credit revenue to the structure's owning HQ if any (consolidated industrial chain).
+    /// Falls back to the structure itself for standalone (manufacturer) or orphan industrial.
     /// </summary>
     internal static void CreditRevenueToHqOrSelf(SimState state, Structure structure, int amount)
     {
@@ -305,10 +142,6 @@ public static class IndustrialProductionMechanic
         }
     }
 
-    /// <summary>
-    /// Charge an expense to the structure's owning HQ if it has one, else to the structure itself.
-    /// M13 consolidated industrial model.
-    /// </summary>
     internal static void ChargeExpenseToHqOrSelf(SimState state, Structure structure, int amount)
     {
         if (structure.OwnerHqId is long hqId && state.City.Structures.TryGetValue(hqId, out var hq))
@@ -334,35 +167,35 @@ public static class IndustrialProductionMechanic
     }
 
     /// <summary>
-    /// Pull up to `unitsRequested` raw material units from any extractor's buffer. M13: goods only —
-    /// no cash transfer between same-HQ industrial structures. The unitPrice parameter is retained
-    /// for signature compatibility but unused.
+    /// Pull up to `unitsRequested` raw units from any extractor with the matching NaturalResource.
+    /// No cash flow — same-HQ goods xfer for the consolidated industrial chain.
     /// </summary>
-    private static int PullRawMaterial(SimState state, Structure buyer, RawMaterial material, int unitsRequested, int unitPrice)
+    private static int PullRawUnits(SimState state, NaturalResource source, int unitsRequested)
     {
         var unitsPulled = 0;
         foreach (var extractor in state.City.Structures.Values)
         {
             if (!Industrial.IsExtractor(extractor.Type)) continue;
             if (!extractor.Operational || extractor.Inactive) continue;
+            if (Industrial.ExtractorSource(extractor.Type) != source) continue;
             if (unitsPulled >= unitsRequested) break;
 
-            var available = extractor.RawStorage.GetValueOrDefault(material);
+            var available = extractor.RawUnitsInStock;
             if (available <= 0) continue;
 
             var qty = Math.Min(available, unitsRequested - unitsPulled);
-            extractor.RawStorage[material] = available - qty;
+            extractor.RawUnitsInStock = available - qty;
+            extractor.MonthlySalesUnits += qty;
             unitsPulled += qty;
         }
         return unitsPulled;
     }
 
     /// <summary>
-    /// Pull processed-good units from any processor's buffer. M14: a standalone Manufacturer pays
-    /// the processor's owning HQ at unitPrice per unit — a real inter-entity cash transaction.
-    /// (For legacy orphan/non-HQ processors, money still flows to the processor itself.)
+    /// Pull MfgInput units from any processor's buffer. The manufacturer is standalone; it pays
+    /// the processor's owning HQ (or the processor itself for orphan processors).
     /// </summary>
-    private static int PullProcessedGood(SimState state, Structure buyer, ProcessedGood good, int unitsRequested, int unitPrice)
+    private static int PullMfgInput(SimState state, Structure buyer, MfgInput input, int unitsRequested, int unitPrice)
     {
         var unitsPulled = 0;
         foreach (var processor in state.City.Structures.Values)
@@ -371,21 +204,18 @@ public static class IndustrialProductionMechanic
             if (!processor.Operational || processor.Inactive) continue;
             if (unitsPulled >= unitsRequested) break;
 
-            var available = processor.ProcessedStorage.GetValueOrDefault(good);
+            var available = processor.MfgInputStorage.GetValueOrDefault(input);
             if (available <= 0) continue;
 
             var qty = Math.Min(available, unitsRequested - unitsPulled);
             var total = qty * unitPrice;
 
-            // Money: buyer (manufacturer) pays the processor's HQ. Buyer is standalone — its own
-            // CashBalance is decremented. Processor's HQ collects revenue.
             buyer.CashBalance -= total;
             buyer.MonthlyExpenses += total;
             CreditRevenueToHqOrSelf(state, processor, total);
 
-            // Goods: processor ships to buyer's input pool (no buffer on buyer side for inputs;
-            // the production caller used the pulled units immediately).
-            processor.ProcessedStorage[good] = available - qty;
+            processor.MfgInputStorage[input] = available - qty;
+            processor.MonthlySalesUnits += qty;
             unitsPulled += qty;
         }
         return unitsPulled;

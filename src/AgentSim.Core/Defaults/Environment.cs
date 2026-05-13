@@ -25,40 +25,33 @@ public static class Environment
     /// </summary>
     public static double ClimateImpactPerUnit(StructureType type) => type switch
     {
-        // Oil industry — highest carbon emissions
-        StructureType.OilWell => 0.0000150,
-        StructureType.FuelRefinery => 0.0000200,
-        StructureType.PlasticPlant => 0.0000180,
-        // Mining + Smelting — heavy CO2 from blast furnaces
-        StructureType.Mine => 0.0000080,
-        StructureType.Smelter => 0.0000180,
-        // Stone — moderate (kiln operations for chalk)
-        StructureType.Quarry => 0.0000040,
-        StructureType.AggregatePlant => 0.0000060,
-        StructureType.ChalkPlant => 0.0000100,
-        // Glass — moderate (silica heating)
-        StructureType.SandPit => 0.0000020,
-        StructureType.SilicatePlant => 0.0000120,
-        // Forestry — light
-        StructureType.ForestExtractor => 0.0000020,
-        StructureType.Sawmill => 0.0000040,
-        StructureType.PulpMill => 0.0000060,
-        // Agriculture — lightest
-        StructureType.Farm => 0.0000010,
-        StructureType.Mill => 0.0000020,
-        StructureType.Ranch => 0.0000030,                // methane
-        StructureType.Slaughterhouse => 0.0000020,
-        StructureType.CottonFarm => 0.0000010,
-        StructureType.Ginnery => 0.0000020,
-        // Manufacturers — moderate (factory emissions)
-        StructureType.HouseholdFactory => 0.0000060,
-        StructureType.BldgSuppliesFactory => 0.0000060,
-        StructureType.MetalGoodsFactory => 0.0000080,
-        StructureType.FoodPackingPlant => 0.0000040,
-        StructureType.ClothingFactory => 0.0000040,
-        StructureType.ConcretePlant => 0.0000100,        // cement is carbon-intensive
-        StructureType.PaperMill => 0.0000060,
-        StructureType.Printer => 0.0000040,
+        // Calibration: rates cut ~5× for small-pop viability (originally sized for high-throughput).
+        StructureType.OilWell => 0.0000030,
+        StructureType.FuelRefinery => 0.0000040,
+        StructureType.PlasticPlant => 0.0000036,
+        StructureType.Mine => 0.0000016,
+        StructureType.Smelter => 0.0000036,
+        StructureType.Quarry => 0.0000008,
+        StructureType.AggregatePlant => 0.0000012,
+        StructureType.ChalkPlant => 0.0000020,
+        StructureType.SandPit => 0.0000004,
+        StructureType.SilicatePlant => 0.0000024,
+        StructureType.ForestExtractor => 0.0000004,
+        StructureType.Sawmill => 0.0000008,
+        StructureType.PulpMill => 0.0000012,
+        StructureType.Farm => 0.0000002,
+        StructureType.Mill => 0.0000004,
+        StructureType.Ranch => 0.0000006,
+        StructureType.Slaughterhouse => 0.0000004,
+        StructureType.CottonFarm => 0.0000002,
+        StructureType.Ginnery => 0.0000004,
+        StructureType.HouseholdFactory => 0.0000012,
+        StructureType.BldgSuppliesFactory => 0.0000012,
+        StructureType.MetalGoodsFactory => 0.0000016,
+        StructureType.FoodPackingPlant => 0.0000008,
+        StructureType.ClothingFactory => 0.0000008,
+        StructureType.ConcretePlant => 0.0000020,
+        StructureType.PaperMill => 0.0000012,
         _ => 0.0,
     };
 
@@ -69,35 +62,33 @@ public static class Environment
     public static double NatureImpactPerUnit(StructureType type) => type switch
     {
         // Extractors most directly damage nature (land + water + habitat).
-        StructureType.OilWell => 0.0000200,           // worst — oil drilling
-        StructureType.Mine => 0.0000180,
-        StructureType.Quarry => 0.0000080,
-        StructureType.SandPit => 0.0000060,
-        StructureType.ForestExtractor => 0.0000100,   // deforestation
-        StructureType.Farm => 0.0000040,
-        StructureType.Ranch => 0.0000060,
-        StructureType.CottonFarm => 0.0000040,
-        // Processors moderate.
-        StructureType.Sawmill => 0.0000020,
-        StructureType.Smelter => 0.0000060,
-        StructureType.Mill => 0.0000010,
-        StructureType.AggregatePlant => 0.0000020,
-        StructureType.SilicatePlant => 0.0000040,
-        StructureType.FuelRefinery => 0.0000080,
-        StructureType.PulpMill => 0.0000040,
-        StructureType.PlasticPlant => 0.0000060,
-        StructureType.Slaughterhouse => 0.0000010,
-        StructureType.Ginnery => 0.0000010,
-        StructureType.ChalkPlant => 0.0000040,
-        // Manufacturers lightest — they're indoor industrial.
-        StructureType.HouseholdFactory => 0.0000020,
-        StructureType.BldgSuppliesFactory => 0.0000020,
-        StructureType.MetalGoodsFactory => 0.0000020,
-        StructureType.FoodPackingPlant => 0.0000010,
-        StructureType.ClothingFactory => 0.0000010,
-        StructureType.ConcretePlant => 0.0000020,
-        StructureType.PaperMill => 0.0000020,
-        StructureType.Printer => 0.0000010,
+        // Calibration: rates cut ~5×.
+        StructureType.OilWell => 0.0000040,
+        StructureType.Mine => 0.0000036,
+        StructureType.Quarry => 0.0000016,
+        StructureType.SandPit => 0.0000012,
+        StructureType.ForestExtractor => 0.0000020,
+        StructureType.Farm => 0.0000008,
+        StructureType.Ranch => 0.0000012,
+        StructureType.CottonFarm => 0.0000008,
+        StructureType.Sawmill => 0.0000004,
+        StructureType.Smelter => 0.0000012,
+        StructureType.Mill => 0.0000002,
+        StructureType.AggregatePlant => 0.0000004,
+        StructureType.SilicatePlant => 0.0000008,
+        StructureType.FuelRefinery => 0.0000016,
+        StructureType.PulpMill => 0.0000008,
+        StructureType.PlasticPlant => 0.0000012,
+        StructureType.Slaughterhouse => 0.0000002,
+        StructureType.Ginnery => 0.0000002,
+        StructureType.ChalkPlant => 0.0000008,
+        StructureType.HouseholdFactory => 0.0000004,
+        StructureType.BldgSuppliesFactory => 0.0000004,
+        StructureType.MetalGoodsFactory => 0.0000004,
+        StructureType.FoodPackingPlant => 0.0000002,
+        StructureType.ClothingFactory => 0.0000002,
+        StructureType.ConcretePlant => 0.0000004,
+        StructureType.PaperMill => 0.0000004,
         _ => 0.0,
     };
 

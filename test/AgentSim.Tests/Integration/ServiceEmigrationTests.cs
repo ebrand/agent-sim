@@ -165,13 +165,13 @@ public class ServiceEmigrationTests
             Seed = 42,
             InitialReservoirSize = 60_000,
             StartingTreasury = 2_000_000,
+            ImmigrationEnabled = false,  // isolate from service-pool behavior
         });
         sim.CreateResidentialZone();
         FullyServeBootstrappedCity(sim);
-        // Cushion savings so insolvency emigration never fires — isolate to service-pool behavior.
         foreach (var a in sim.State.City.Agents.Values) a.Savings = 100_000;
 
-        sim.Tick(30 * 6);  // 6 months at 100% satisfaction
+        sim.Tick(30 * 6);
 
         Assert.Equal(50, sim.State.City.Population);
     }

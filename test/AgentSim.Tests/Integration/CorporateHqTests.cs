@@ -15,7 +15,13 @@ public class CorporateHqTests
 {
     private static (Sim sim, Structure hq) NewSimWithHq(IndustryType industry = IndustryType.Forestry)
     {
-        var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 1_000_000 });
+        // FoundingPhaseEnabled = false: tests assert un-subsidized tax/upkeep behavior.
+        var sim = Sim.Create(new SimConfig
+        {
+            Seed = 42,
+            StartingTreasury = 1_000_000,
+            FoundingPhaseEnabled = false,
+        });
         var commZone = sim.CreateCommercialZone();
         var hq = sim.PlaceCorporateHq(commZone.Id, industry, $"TestCo-{industry}");
         hq.ConstructionTicks = hq.RequiredConstructionTicks;
@@ -134,7 +140,7 @@ public class CorporateHqTests
     {
         var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 1_000_000 });
         var commZone = sim.CreateCommercialZone();
-        var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop);
+        var shop = sim.PlaceCommercialStructure(commZone.Id, StructureType.Shop, CommercialSector.Retail);
 
         Assert.Throws<ArgumentException>(() =>
             sim.PlaceIndustrialStructure(StructureType.ForestExtractor, shop.Id));
@@ -223,17 +229,14 @@ public class CorporateHqTests
         hq.ConstructionTicks = hq.RequiredConstructionTicks;
         var hqCashStart = hq.CashBalance;
 
-        sim.Tick(30);  // monthly settlement; would normally distribute COL to commercial
+        sim.Tick(30);
 
-        // HQ should have lost money on utility + property tax + maybe income tax flowthrough,
-        // but NOT gained any COL revenue. Net change should be modestly negative.
-        Assert.True(hq.CashBalance < hqCashStart,
-            $"HQ should not receive COL revenue. Cash before: {hqCashStart}, after: {hq.CashBalance}");
-        // Specifically: monthly COL would be ~$31k from 50 settlers × $625 avg COL. Verify the
-        // HQ's cash change is much less than that (i.e., didn't receive COL).
-        var cashDrop = hqCashStart - hq.CashBalance;
-        Assert.True(cashDrop < 20_000,
-            $"HQ should not receive COL revenue. Expected modest loss, got drop of {cashDrop}.");
+        // Key invariant: HQ doesn't gain COL revenue (not consumer-facing). M-cal sets HQ's
+        // utility + property tax to zero (admin entity), so with no industrial subordinates the
+        // HQ's cash should be roughly unchanged.
+        var cashDelta = Math.Abs(hq.CashBalance - hqCashStart);
+        Assert.True(cashDelta < 20_000,
+            $"HQ should not receive COL revenue. Expected near-zero delta, got {cashDelta}.");
     }
 
     [Fact]

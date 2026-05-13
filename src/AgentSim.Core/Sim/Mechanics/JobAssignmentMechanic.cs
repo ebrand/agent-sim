@@ -45,7 +45,7 @@ public static class JobAssignmentMechanic
 
             foreach (var agent in candidates)
             {
-                HireAgent(structure, agent, slotTier);
+                HireAgent(state, structure, agent, slotTier);
             }
         }
     }
@@ -78,7 +78,7 @@ public static class JobAssignmentMechanic
                                      && s.JobSlots.GetValueOrDefault(slotTier) > s.FilledSlots.GetValueOrDefault(slotTier));
             if (structure != null)
             {
-                HireAgent(structure, agent, slotTier);
+                HireAgent(state, structure, agent, slotTier);
                 return true;
             }
         }
@@ -86,12 +86,15 @@ public static class JobAssignmentMechanic
         return false;
     }
 
-    private static void HireAgent(Structure structure, Agent agent, EducationTier slotTier)
+    private static void HireAgent(SimState state, Structure structure, Agent agent, EducationTier slotTier)
     {
         structure.EmployeeIds.Add(agent.Id);
         structure.FilledSlots[slotTier] = structure.FilledSlots.GetValueOrDefault(slotTier) + 1;
         agent.EmployerStructureId = structure.Id;
         agent.CurrentJobTier = slotTier;
-        agent.CurrentWage = Defaults.Wages.MonthlyWage(slotTier);
+        // M18: ±5% wage variance around the tier base, seeded via the sim PRNG for determinism.
+        var baseWage = Defaults.Wages.MonthlyWage(slotTier);
+        var multiplier = Defaults.Wages.WageVarianceMin + state.Prng.NextDouble() * Defaults.Wages.WageVarianceSpread;
+        agent.CurrentWage = (int)(baseWage * multiplier);
     }
 }

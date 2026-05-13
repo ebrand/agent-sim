@@ -9,38 +9,68 @@ using UnityEngine.InputSystem;
 namespace AgentSimUnity
 {
     /// <summary>
-    /// Phase B smoke test: load AgentSim.Core via the netstandard2.1 plugin DLL, create a sim,
-    /// tick it at a configurable speed, and surface key state through Debug.Log + an OnGUI overlay.
-    ///
-    /// Drop on any GameObject in a scene and press Play. Phase C will replace the OnGUI overlay
-    /// with a real Tilemap + UI Toolkit dashboard.
+    /// Boots the sim and ticks it at the player-chosen speed. Time control is exposed via
+    /// <see cref="CurrentSpeed"/>; the HUD reads/writes it. The Inspector knobs remain as
+    /// starting state.
     /// </summary>
     [RequireComponent(typeof(SimVisualizer))]
     [RequireComponent(typeof(PlacementController))]
+    [RequireComponent(typeof(HudController))]
     public class SimBootstrap : MonoBehaviour
     {
         public enum ScenarioChoice { Minimal, SelfSustaining, MidGame }
+        public enum TimeSpeed { Paused, Normal, Fast, VeryFast }
 
         [Header("Scenario")]
         public ScenarioChoice Scenario = ScenarioChoice.Minimal;
 
-        [Header("Ticking")]
-        [Tooltip("Ticks (days) per real-time second. 1 = realtime, 30 = 1 month/sec.")]
-        public float TicksPerSecond = 10f;
-
-        [Tooltip("Auto-run on Start. If false, press Space to step one tick.")]
-        public bool AutoRun = true;
+        [Header("Time")]
+        [Tooltip("Starting speed. The HUD overrides this at runtime.")]
+        public TimeSpeed StartingSpeed = TimeSpeed.Normal;
 
         private Sim? _sim;
         private string _scenarioName = "";
         private float _tickAccumulator;
 
-        /// <summary>Underlying sim — null until Start() runs.</summary>
         public Sim? Sim => _sim;
         public string ScenarioName => _scenarioName;
 
+        /// <summary>Current player-selected speed. The HUD writes this.</summary>
+        public TimeSpeed CurrentSpeed { get; set; } = TimeSpeed.Normal;
+
+        /// <summary>Ticks per real-time second at the current speed.</summary>
+        public float TicksPerSecond => CurrentSpeed switch
+        {
+            TimeSpeed.Paused => 0f,
+            TimeSpeed.Normal => 1f,
+            TimeSpeed.Fast => 4f,
+            TimeSpeed.VeryFast => 30f,
+            _ => 0f,
+        };
+
+        public bool IsPaused => CurrentSpeed == TimeSpeed.Paused;
+
+        /// <summary>Advance the sim by one tick. No-op if sim is null or game-over.</summary>
+        public void Step()
+        {
+            if (_sim is null) return;
+            if (_sim.State.City.GameOver) return;
+            _sim.Tick(1);
+        }
+
+        void Awake()
+        {
+            // All sim tilemaps are parented to this transform. Force it to the world origin
+            // so cell coords == world coords; otherwise ScreenToWorldPoint -> tile mapping
+            // breaks (mouse picks a different tile than the ghost paints).
+            transform.position = Vector3.zero;
+            transform.rotation = Quaternion.identity;
+            transform.localScale = Vector3.one;
+        }
+
         void Start()
         {
+            CurrentSpeed = StartingSpeed;
             (_sim, _scenarioName) = LoadScenario(Scenario);
             Debug.Log($"[SimBootstrap] Loaded {_scenarioName}. " +
                       $"Pop={_sim.State.City.Population}, " +
@@ -53,56 +83,21 @@ namespace AgentSimUnity
             if (_sim == null) return;
             if (_sim.State.City.GameOver) return;
 
-            if (AutoRun)
+            float tps = TicksPerSecond;
+            if (tps > 0f)
             {
-                _tickAccumulator += Time.deltaTime * TicksPerSecond;
+                _tickAccumulator += Time.deltaTime * tps;
                 while (_tickAccumulator >= 1f)
                 {
                     _sim.Tick(1);
                     _tickAccumulator -= 1f;
                 }
             }
-            else if (Keyboard.current is not null && Keyboard.current.spaceKey.wasPressedThisFrame)
+            else
             {
-                _sim.Tick(1);
+                _tickAccumulator = 0f;
             }
         }
-
-        void OnGUI()
-        {
-            if (_sim == null) return;
-
-            var s = _sim.State;
-            var snap = ServiceSatisfactionMechanic.Compute(s);
-            var worst = Mathf.Min((float)snap.CivicPercent, (float)snap.HealthcarePercent,
-                Mathf.Min((float)snap.UtilityPercent, (float)snap.EnvironmentalPercent));
-
-            // Offset to clear the placement sidebar (width 220) + mode strip.
-            const int hudX = 230;
-            const int hudY = 40;
-            GUI.Box(new Rect(hudX, hudY, 360, 200), $"AgentSim — {_scenarioName}");
-            GUILayout.BeginArea(new Rect(hudX + 10, hudY + 20, 340, 180));
-            GUILayout.Label($"Day {s.CurrentTick} (M{(s.CurrentTick + 29) / 30})");
-            GUILayout.Label($"Pop {s.City.Population}   Employed {EmployedCount(s)}");
-            GUILayout.Label($"Treasury ${s.City.TreasuryBalance:N0}");
-            GUILayout.Label($"Climate {(s.Region.Climate * 100):F0}%   Nature {(s.Region.Nature * 100):F0}%");
-            GUILayout.Label($"Worst service {worst:F0}%");
-            GUILayout.Label($"Founding phase: {FoundingPhaseLabel(s)}");
-            GUILayout.Label($"Tick rate: {TicksPerSecond:F1}/s");
-            GUILayout.Label(_sim.State.City.GameOver ? "GAME OVER" : "Running");
-            GUILayout.EndArea();
-        }
-
-        private static int EmployedCount(SimState s)
-        {
-            int n = 0;
-            foreach (var a in s.City.Agents.Values)
-                if (a.EmployerStructureId != null) n++;
-            return n;
-        }
-
-        private static string FoundingPhaseLabel(SimState s) =>
-            AgentSim.Core.Defaults.FoundingPhase.IsActive(s) ? "yes" : "no";
 
         private static (Sim sim, string name) LoadScenario(ScenarioChoice c) => c switch
         {

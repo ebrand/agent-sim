@@ -56,6 +56,12 @@ namespace AgentSimUnity
             HandleCameraControl();
         }
 
+        // UI overlap constants — used to guard clicks/hovers that fall on HUD chrome.
+        // Camera remains full-screen; the sidebar and top bar visually obscure parts of the
+        // rendered map, but ScreenToWorldPoint still maps cursor → world correctly.
+        private const float SidebarWidthPx = 220f;
+        private const float TopBarHeightPx = 56f;
+
         void LateUpdate()
         {
             if (_bootstrap.Sim is null) return;
@@ -254,8 +260,9 @@ namespace AgentSimUnity
             if (placement != null && placement.IsActive) return;
 
             var mousePos = Mouse.current.position.ReadValue();
-            // Skip clicks inside the placement sidebar's screen area.
-            if (placement != null && mousePos.x < 220) return;
+            // Skip clicks over the UI (sidebar on left, top bar on top).
+            if (placement != null && mousePos.x < SidebarWidthPx) return;
+            if (mousePos.y > Screen.height - TopBarHeightPx) return;
 
             var cam = Camera.main;
             if (cam == null) return;

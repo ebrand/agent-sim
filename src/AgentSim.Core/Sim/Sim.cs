@@ -106,6 +106,8 @@ public sealed class Sim
             State.BootstrapFired = true;
         }
 
+        State.LogEvent(SimEventSeverity.Info, "Zone",
+            $"Zoned {type}{(sector is { } s ? $" ({s})" : "")} #{zone.Id} at ({effectiveBounds.X},{effectiveBounds.Y}) {effectiveBounds.Width}×{effectiveBounds.Height}");
         return zone;
     }
 
@@ -224,6 +226,8 @@ public sealed class Sim
         State.City.Structures[structure.Id] = structure;
         PlaceSpatial(structure, x, y);
         hq.OwnedStructureIds.Add(structure.Id);
+        State.LogEvent(SimEventSeverity.Info, "Placement",
+            $"Built {type} #{structure.Id} (HQ #{ownerHqId}) at ({structure.X},{structure.Y})");
         return structure;
     }
 
@@ -258,6 +262,8 @@ public sealed class Sim
         foreach (var sector in recipe.Sectors) structure.ManufacturerSectors.Add(sector);
         State.City.Structures[structure.Id] = structure;
         PlaceSpatial(structure, x, y);
+        State.LogEvent(SimEventSeverity.Info, "Placement",
+            $"Built {type} #{structure.Id} at ({structure.X},{structure.Y})");
         return structure;
     }
 
@@ -326,6 +332,8 @@ public sealed class Sim
         State.City.Structures[structure.Id] = structure;
         PlaceSpatial(structure, x, y);
         zone.StructureIds.Add(structure.Id);
+        State.LogEvent(SimEventSeverity.Info, "Placement",
+            $"Built {type} #{structure.Id} in zone #{zone.Id} at ({structure.X},{structure.Y})");
         return structure;
     }
 
@@ -355,6 +363,8 @@ public sealed class Sim
         };
         State.City.Structures[structure.Id] = structure;
         PlaceSpatial(structure, x, y);
+        State.LogEvent(SimEventSeverity.Info, "Placement",
+            $"Built {type} #{structure.Id} at ({structure.X},{structure.Y})");
         return structure;
     }
 
@@ -388,6 +398,8 @@ public sealed class Sim
         State.City.Structures[structure.Id] = structure;
         PlaceSpatial(structure, x, y);
         zone.StructureIds.Add(structure.Id);
+        State.LogEvent(SimEventSeverity.Info, "Placement",
+            $"Built CorporateHq #{structure.Id} ({industry}, \"{name}\") in zone #{zone.Id} at ({structure.X},{structure.Y})");
         return structure;
     }
 
@@ -420,6 +432,8 @@ public sealed class Sim
         };
         State.City.Structures[structure.Id] = structure;
         PlaceSpatial(structure, x, y);
+        State.LogEvent(SimEventSeverity.Info, "Placement",
+            $"Built {type} #{structure.Id} at ({structure.X},{structure.Y})");
         return structure;
     }
 
@@ -453,6 +467,8 @@ public sealed class Sim
         };
         State.City.Structures[structure.Id] = structure;
         PlaceSpatial(structure, x, y);
+        State.LogEvent(SimEventSeverity.Info, "Placement",
+            $"Built {type} #{structure.Id} at ({structure.X},{structure.Y})");
         return structure;
     }
 
@@ -488,6 +504,8 @@ public sealed class Sim
         State.City.Structures[structure.Id] = structure;
         PlaceSpatial(structure, x, y);
         zone.StructureIds.Add(structure.Id);
+        State.LogEvent(SimEventSeverity.Info, "Placement",
+            $"Built {type} #{structure.Id} ({sector}) in zone #{zone.Id} at ({structure.X},{structure.Y})");
         return structure;
     }
 

@@ -14,6 +14,11 @@ public static class ConstructionMechanic
             if (structure.UnderConstruction)
             {
                 structure.ConstructionTicks++;
+                if (!structure.UnderConstruction)
+                {
+                    state.LogEvent(SimEventSeverity.Info, "Construction",
+                        $"{structure.Type} #{structure.Id} construction complete");
+                }
             }
         }
     }

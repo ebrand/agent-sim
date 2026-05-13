@@ -26,4 +26,19 @@ public sealed class SimState
     public long AllocateAgentId() => _nextAgentId++;
     public long AllocateStructureId() => _nextStructureId++;
     public long AllocateZoneId() => _nextZoneId++;
+
+    /// <summary>Append-only log of player-facing events (placements, construction, game over, ...).
+    /// Capped at <see cref="EventLogMax"/> entries — oldest dropped first to avoid unbounded growth.</summary>
+    public List<SimEvent> EventLog { get; } = new();
+
+    private const int EventLogMax = 10_000;
+
+    public void LogEvent(SimEventSeverity severity, string category, string message)
+    {
+        EventLog.Add(new SimEvent(CurrentTick, severity, category, message));
+        if (EventLog.Count > EventLogMax)
+        {
+            EventLog.RemoveRange(0, EventLog.Count - EventLogMax);
+        }
+    }
 }

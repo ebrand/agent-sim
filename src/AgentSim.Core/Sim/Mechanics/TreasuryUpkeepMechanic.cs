@@ -72,15 +72,22 @@ public static class TreasuryUpkeepMechanic
         if (state.City.UpkeepFundingFraction < 1.0)
         {
             state.City.ConsecutiveMonthsBankrupt++;
+            if (state.City.ConsecutiveMonthsBankrupt == 1)
+            {
+                state.LogEvent(SimEventSeverity.Warning, "Treasury",
+                    $"Underfunded upkeep this month (fraction {state.City.UpkeepFundingFraction:P0})");
+            }
         }
         else
         {
             state.City.ConsecutiveMonthsBankrupt = 0;
         }
 
-        if (state.City.ConsecutiveMonthsBankrupt >= Upkeep.BankruptcyMonthsToGameOver)
+        if (state.City.ConsecutiveMonthsBankrupt >= Upkeep.BankruptcyMonthsToGameOver && !state.City.GameOver)
         {
             state.City.GameOver = true;
+            state.LogEvent(SimEventSeverity.Critical, "GameOver",
+                $"City bankrupt for {Upkeep.BankruptcyMonthsToGameOver} months. Game over.");
         }
     }
 }

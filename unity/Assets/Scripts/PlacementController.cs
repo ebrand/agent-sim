@@ -119,8 +119,13 @@ namespace AgentSimUnity
         {
             if (Mouse.current is null) return false;
             var pos = Mouse.current.position.ReadValue();
-            return pos.x < SidebarWidth;
+            // Input System y=0 is screen bottom; top bar covers screen top, so y > height - TopBar.
+            if (pos.x < SidebarWidth) return true;
+            if (pos.y > Screen.height - TopBarHeightPx) return true;
+            return false;
         }
+
+        private const float TopBarHeightPx = 56f;
 
         private Vector3Int? MouseToTile()
         {
@@ -458,7 +463,8 @@ namespace AgentSimUnity
                 Mode.PaintZone => $"Painting: {_pendingZoneType}  (drag rectangle, Esc to cancel)",
                 _ => "",
             };
-            var rect = new Rect(SidebarWidth + 10, 10, 600, 24);
+            // Sit just below the UI Toolkit top bar (height 56).
+            var rect = new Rect(SidebarWidth + 10, 66, 600, 24);
             GUI.Box(rect, label);
         }
 

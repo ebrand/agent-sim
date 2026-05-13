@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using AgentSim.Core.Defaults;
 using AgentSim.Core.Types;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.Tilemaps;
 using UnityTilemap = UnityEngine.Tilemaps.Tilemap;
 using SimTilemap = AgentSim.Core.Types.Tilemap;
@@ -203,11 +204,13 @@ namespace AgentSimUnity
 
         private void HandleClick()
         {
-            if (!Input.GetMouseButtonDown(0)) return;
+            if (Mouse.current is null) return;
+            if (!Mouse.current.leftButton.wasPressedThisFrame) return;
             var cam = Camera.main;
             if (cam == null) return;
 
-            var world = cam.ScreenToWorldPoint(Input.mousePosition);
+            var mousePos = Mouse.current.position.ReadValue();
+            var world = cam.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0f));
             int tx = Mathf.FloorToInt(world.x);
             int ty = Mathf.FloorToInt(world.y);
             _selectedStructureId = _bootstrap.Sim?.State.Region.Tilemap.StructureAt(tx, ty);

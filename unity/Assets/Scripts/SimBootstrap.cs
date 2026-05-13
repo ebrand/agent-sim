@@ -3,6 +3,7 @@ using AgentSim.Core.Sim;
 using AgentSim.Core.Sim.Mechanics;
 using AgentSim.Core.Types;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace AgentSimUnity
 {
@@ -58,7 +59,7 @@ namespace AgentSimUnity
                     _tickAccumulator -= 1f;
                 }
             }
-            else if (Input.GetKeyDown(KeyCode.Space))
+            else if (Keyboard.current is not null && Keyboard.current.spaceKey.wasPressedThisFrame)
             {
                 _sim.Tick(1);
             }

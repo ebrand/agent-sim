@@ -119,5 +119,12 @@ public sealed class Structure
     /// <summary>IDs of industrial structures this HQ owns. Empty for non-HQ.</summary>
     public List<long> OwnedStructureIds { get; } = new();
 
+    /// <summary>Set by UtilityCoverageMechanic — true when at least one footprint tile is reachable
+    /// from an operational Generator via 8-neighbor adjacency or distribution-structure radius.</summary>
+    public bool IsPowered { get; set; }
+
+    /// <summary>Set by UtilityCoverageMechanic — same model for Well water.</summary>
+    public bool IsWatered { get; set; }
+
     public StructureCategory Category => Type.Category();
 }

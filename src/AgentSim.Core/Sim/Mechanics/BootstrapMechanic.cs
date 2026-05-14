@@ -33,25 +33,30 @@ public static class BootstrapMechanic
 
     private static Structure SpawnInstantHouse(SimState state, Zone zone)
     {
+        // Bootstrap houses are always pre-built (settler burst arrives with shelter ready),
+        // independent of InstantConstruction. Both fields equal so Operational = true.
+        int buildTicks = state.Config.InstantConstruction ? 0 : Residential.BuildDurationTicks;
         var house = new Structure
         {
             Id = state.AllocateStructureId(),
             Type = StructureType.House,
             ZoneId = zone.Id,
             ResidentialCapacity = Residential.Capacity(StructureType.House),
-            ConstructionTicks = Residential.BuildDurationTicks,
-            RequiredConstructionTicks = Residential.BuildDurationTicks,
+            ConstructionTicks = buildTicks,
+            RequiredConstructionTicks = buildTicks,
         };
         state.City.Structures[house.Id] = house;
-        // Place at first free 1×1 tile within the zone.
+        // Place using the House's actual footprint so the entire structure fits in the zone
+        // and the tilemap accurately reflects every occupied tile.
         if (zone.Bounds is ZoneBounds zb)
         {
-            var spot = state.Region.Tilemap.FindFreeSpotInZone(zone.Id, zb, 1, 1);
+            var (w, h) = Footprint.For(StructureType.House);
+            var spot = state.Region.Tilemap.FindFreeSpotInZone(zone.Id, zb, w, h);
             if (spot is not null)
             {
                 house.X = spot.Value.X;
                 house.Y = spot.Value.Y;
-                state.Region.Tilemap.SetStructureFootprint(house.Id, spot.Value.X, spot.Value.Y, 1, 1);
+                state.Region.Tilemap.SetStructureFootprint(house.Id, spot.Value.X, spot.Value.Y, w, h);
             }
         }
         zone.StructureIds.Add(house.Id);

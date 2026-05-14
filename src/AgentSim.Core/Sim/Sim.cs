@@ -100,7 +100,13 @@ public sealed class Sim
         State.Region.Tilemap.SetZoneArea(zone.Id, effectiveBounds.X, effectiveBounds.Y,
             effectiveBounds.Width, effectiveBounds.Height);
 
-        if (type == ZoneType.Residential && !State.BootstrapFired)
+        // Bootstrap: legacy mode (Config.GateBootstrapOnUtilities=false) auto-fires on first
+        // residential zone — keeps existing tests and pre-built scenarios working without
+        // requiring explicit Generator/Well placement first. Gated mode (Empty scenario) waits
+        // for utilities to be placed; see TryFireBootstrap() called from Tick().
+        if (!State.Config.GateBootstrapOnUtilities
+            && type == ZoneType.Residential
+            && !State.BootstrapFired)
         {
             BootstrapMechanic.Fire(State, zone);
             State.BootstrapFired = true;
@@ -125,13 +131,20 @@ public sealed class Sim
         return new ZoneBounds(0, 0, width, height);
     }
 
+    /// <summary>True when a padded box around (x, y, w, h) contains no zoned tiles and no
+    /// structures. The padding leaves breathing room between auto-allocated zones so they
+    /// don't end up directly abutting — important now that the distribution network only
+    /// auto-spreads through touching footprints.</summary>
+    private const int AutoZonePadding = 6;
     private static bool IsAreaUnzoned(Tilemap tm, int x, int y, int w, int h)
     {
-        for (int dy = 0; dy < h; dy++)
-        for (int dx = 0; dx < w; dx++)
+        for (int dy = -AutoZonePadding; dy < h + AutoZonePadding; dy++)
+        for (int dx = -AutoZonePadding; dx < w + AutoZonePadding; dx++)
         {
-            if (tm.ZoneAt(x + dx, y + dy) is not null) return false;
-            if (tm.StructureAt(x + dx, y + dy) is not null) return false;
+            int tx = x + dx, ty = y + dy;
+            if (!tm.InBounds(tx, ty)) continue;
+            if (tm.ZoneAt(tx, ty) is not null) return false;
+            if (tm.StructureAt(tx, ty) is not null) return false;
         }
         return true;
     }
@@ -183,6 +196,10 @@ public sealed class Sim
         // immediately. Under-construction structures still contribute nothing (filtered
         // inside the mechanic), but operational ones will start influencing right away.
         Mechanics.LandValueMechanic.RunMonthly(State);
+
+        // Recompute utility coverage so the UI / mechanics see which structures are now
+        // served by the new layout.
+        Mechanics.UtilityCoverageMechanic.Compute(State);
     }
 
     /// <summary>
@@ -223,7 +240,7 @@ public sealed class Sim
             ZoneId = 0,  // industrial sits outside zones
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 7,
+            RequiredConstructionTicks = State.Config.InstantConstruction ? 0 : 7,
             JobSlots = Industrial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
             InternalStorageCapacity = Industrial.InternalStorageCapacity,
             OwnerHqId = ownerHqId,
@@ -259,7 +276,7 @@ public sealed class Sim
             ZoneId = 0,
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 7,
+            RequiredConstructionTicks = State.Config.InstantConstruction ? 0 : 7,
             JobSlots = Industrial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
             InternalStorageCapacity = Industrial.InternalStorageCapacity,
             MfgUnitPrice = recipe.UnitPrice,
@@ -332,7 +349,7 @@ public sealed class Sim
             ZoneId = zone.Id,
             ResidentialCapacity = Defaults.Residential.Capacity(type),
             ConstructionTicks = 0,
-            RequiredConstructionTicks = Defaults.Residential.BuildDurationTicks,
+            RequiredConstructionTicks = State.Config.InstantConstruction ? 0 : Defaults.Residential.BuildDurationTicks,
         };
         State.City.Structures[structure.Id] = structure;
         PlaceSpatial(structure, x, y);
@@ -364,7 +381,7 @@ public sealed class Sim
             ZoneId = 0,
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 7,
+            RequiredConstructionTicks = State.Config.InstantConstruction ? 0 : 7,
         };
         State.City.Structures[structure.Id] = structure;
         PlaceSpatial(structure, x, y);
@@ -394,7 +411,7 @@ public sealed class Sim
             ZoneId = zone.Id,
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 7,
+            RequiredConstructionTicks = State.Config.InstantConstruction ? 0 : 7,
             JobSlots = Commercial.JobSlots(StructureType.CorporateHq).ToDictionary(kv => kv.Key, kv => kv.Value),
             Name = name,
             Industry = industry,
@@ -431,7 +448,7 @@ public sealed class Sim
             ZoneId = 0,
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 7,
+            RequiredConstructionTicks = State.Config.InstantConstruction ? 0 : 7,
             SeatCapacity = Defaults.Education.SeatCapacityFor(type),
             JobSlots = Defaults.CivicEmployment.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
         };
@@ -466,7 +483,7 @@ public sealed class Sim
             ZoneId = 0,
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 7,
+            RequiredConstructionTicks = State.Config.InstantConstruction ? 0 : 7,
             ServiceCapacity = Defaults.Services.CapacityFor(type),
             JobSlots = Defaults.CivicEmployment.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
         };
@@ -502,7 +519,7 @@ public sealed class Sim
             ZoneId = zone.Id,
             ResidentialCapacity = 0,
             ConstructionTicks = 0,
-            RequiredConstructionTicks = 7,
+            RequiredConstructionTicks = State.Config.InstantConstruction ? 0 : 7,
             JobSlots = Commercial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
             Sector = sector,
         };
@@ -556,7 +573,18 @@ public sealed class Sim
         }
 
         State.City.Structures.Remove(structureId);
+
+        // Remove any network edges that referenced this structure.
+        var staleEdges = new List<long>();
+        foreach (var e in State.NetworkEdges.Values)
+        {
+            if (e.SourceStructureId == structureId || e.TargetStructureId == structureId)
+                staleEdges.Add(e.Id);
+        }
+        foreach (var id in staleEdges) State.NetworkEdges.Remove(id);
+
         Mechanics.LandValueMechanic.RunMonthly(State);
+        Mechanics.UtilityCoverageMechanic.Compute(State);
         State.LogEvent(SimEventSeverity.Info, "Demolition",
             $"Removed {s.Type} #{s.Id} at ({s.X},{s.Y})");
     }
@@ -581,6 +609,12 @@ public sealed class Sim
 
             State.CurrentTick++;
 
+            // Bootstrap gate: fire the initial settler burst when the player has zoned
+            // residential AND placed both a Generator and a Well. Under-construction counts —
+            // the houses themselves take 7 days to build, so utilities will be operational by
+            // the time the city actually needs them.
+            TryFireBootstrap();
+
             // Daily events
             AgingMechanic.RunDaily(State);  // agents age; deaths happen at lifespan
             ConstructionMechanic.AdvanceConstruction(State);
@@ -592,5 +626,107 @@ public sealed class Sim
             // Periodic settlements (fires on days 1, 8, 15, 22, 30)
             SettlementMechanic.RunDailySettlements(State);
         }
+    }
+
+    /// <summary>Public wrapper for the bootstrap gate. Scenarios call this after placing the
+    /// initial zone + utilities so the settler burst fires immediately (without needing to
+    /// Tick). Returns true if bootstrap fired this call.</summary>
+    public void CheckBootstrap() => TryFireBootstrap();
+
+    /// <summary>Maximum Manhattan/Euclidean distance between a network edge's endpoint
+    /// structures (measured center-to-center). Edges further than this are rejected.</summary>
+    public const float MaxEdgeLengthTiles = 30f;
+
+    /// <summary>Create a player-drawn distribution edge between two distributors of the same
+    /// kind (ElectricityDistribution↔ElectricityDistribution, or WaterDistribution↔WaterDistribution).
+    /// The network as a whole is energized when ANY distributor in the connected component is
+    /// 8-neighbor adjacent to a matching producer (Generator / Well). Edges are conceptually
+    /// undirected; we just store endpoints in (A, B) order for de-duping.</summary>
+    public NetworkEdge ConnectEdge(long aId, long bId, NetworkKind kind)
+    {
+        if (aId == bId)
+            throw new InvalidOperationException("Cannot connect a distributor to itself.");
+        if (!State.City.Structures.TryGetValue(aId, out var a))
+            throw new ArgumentException($"Structure {aId} not found", nameof(aId));
+        if (!State.City.Structures.TryGetValue(bId, out var b))
+            throw new ArgumentException($"Structure {bId} not found", nameof(bId));
+
+        var expectedType = kind == NetworkKind.Power
+            ? StructureType.ElectricityDistribution
+            : StructureType.WaterDistribution;
+        if (a.Type != expectedType || b.Type != expectedType)
+            throw new InvalidOperationException(
+                $"Both endpoints must be {expectedType} for a {kind} edge.");
+
+        // Length check (center-to-center).
+        var (aw, ah) = Defaults.Footprint.For(a.Type);
+        var (bw, bh) = Defaults.Footprint.For(b.Type);
+        float aCx = a.X + aw / 2f;
+        float aCy = a.Y + ah / 2f;
+        float bCx = b.X + bw / 2f;
+        float bCy = b.Y + bh / 2f;
+        float dist = MathF.Sqrt((aCx - bCx) * (aCx - bCx) + (aCy - bCy) * (aCy - bCy));
+        if (dist > MaxEdgeLengthTiles)
+            throw new InvalidOperationException(
+                $"Edge would be {dist:F1} tiles long; maximum is {MaxEdgeLengthTiles}.");
+
+        // Reject duplicate (in either direction since edges are conceptually undirected).
+        foreach (var e in State.NetworkEdges.Values)
+        {
+            if (e.Kind != kind) continue;
+            bool same = (e.SourceStructureId == aId && e.TargetStructureId == bId)
+                      || (e.SourceStructureId == bId && e.TargetStructureId == aId);
+            if (same) throw new InvalidOperationException("Edge already exists.");
+        }
+
+        var edge = new NetworkEdge
+        {
+            Id = State.AllocateEdgeId(),
+            SourceStructureId = aId,
+            TargetStructureId = bId,
+            Kind = kind,
+        };
+        State.NetworkEdges[edge.Id] = edge;
+        Mechanics.UtilityCoverageMechanic.Compute(State);
+        State.LogEvent(SimEventSeverity.Info, "Network",
+            $"Connected {kind} distributors: #{aId} ↔ #{bId} ({dist:F1} tiles)");
+        return edge;
+    }
+
+    /// <summary>Remove a distribution edge. Triggers a coverage recompute.</summary>
+    public void RemoveEdge(long edgeId)
+    {
+        if (!State.NetworkEdges.Remove(edgeId)) return;
+        Mechanics.UtilityCoverageMechanic.Compute(State);
+        State.LogEvent(SimEventSeverity.Info, "Network", $"Disconnected edge #{edgeId}");
+    }
+
+    private void TryFireBootstrap()
+    {
+        if (State.BootstrapFired) return;
+        if (!State.Config.GateBootstrapOnUtilities) return;  // legacy: CreateZone handles it
+
+        Zone? firstResZone = null;
+        bool hasGenerator = false;
+        bool hasWell = false;
+
+        foreach (var z in State.City.Zones.Values)
+        {
+            if (z.Type == ZoneType.Residential) { firstResZone = z; break; }
+        }
+        if (firstResZone is null) return;
+
+        foreach (var s in State.City.Structures.Values)
+        {
+            if (s.Type == StructureType.Generator) hasGenerator = true;
+            else if (s.Type == StructureType.Well) hasWell = true;
+            if (hasGenerator && hasWell) break;
+        }
+        if (!hasGenerator || !hasWell) return;
+
+        BootstrapMechanic.Fire(State, firstResZone);
+        State.BootstrapFired = true;
+        State.LogEvent(SimEventSeverity.Info, "Bootstrap",
+            "City founded — residential zone has power + water access. Settlers arriving.");
     }
 }

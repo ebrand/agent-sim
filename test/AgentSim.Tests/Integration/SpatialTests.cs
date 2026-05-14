@@ -105,17 +105,18 @@ public class SpatialTests
     }
 
     [Theory]
-    [InlineData(StructureType.House, 1, 1)]
-    [InlineData(StructureType.Shop, 2, 2)]
-    [InlineData(StructureType.Apartment, 3, 3)]
-    [InlineData(StructureType.PoliceStation, 4, 4)]
-    [InlineData(StructureType.PaperMill, 5, 5)]
-    [InlineData(StructureType.Hospital, 6, 6)]
-    public void Footprint_MatchesExpected(StructureType type, int expectedW, int expectedH)
+    [InlineData(StructureType.House)]
+    [InlineData(StructureType.Shop)]
+    [InlineData(StructureType.Apartment)]
+    [InlineData(StructureType.PoliceStation)]
+    [InlineData(StructureType.PaperMill)]
+    [InlineData(StructureType.Hospital)]
+    public void Footprint_IsUniform2x2(StructureType type)
     {
+        // All structures use a uniform 2×2 footprint during early playtesting.
         var (w, h) = Footprint.For(type);
-        Assert.Equal(expectedW, w);
-        Assert.Equal(expectedH, h);
+        Assert.Equal(2, w);
+        Assert.Equal(2, h);
     }
 
     [Fact]

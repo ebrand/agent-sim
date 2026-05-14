@@ -31,6 +31,7 @@ namespace AgentSimUnity
             PlaceStructure,
             PaintZone,
             Demolish,
+            Connect,
         }
 
         private SimBootstrap _bootstrap = null!;
@@ -45,6 +46,7 @@ namespace AgentSimUnity
         private StructureType _pendingStructureType;
         private ZoneType _pendingZoneType;
         private CommercialSector? _pendingZoneSector;
+        private long? _connectSourceId;  // first click in Connect mode
 
         private Vector3Int? _zoneDragStart;
         private Vector2 _sidebarScroll;
@@ -54,6 +56,8 @@ namespace AgentSimUnity
         private const int SidebarPad = 12;
 
         public bool IsActive => _mode != Mode.Inspect;
+        public Mode CurrentMode => _mode;
+        public long? ConnectSourceId => _connectSourceId;
 
         void Awake()
         {
@@ -167,6 +171,11 @@ namespace AgentSimUnity
             {
                 if (Mouse.current.leftButton.wasPressedThisFrame)
                     TryDemolish(tile.Value);
+            }
+            else if (_mode == Mode.Connect)
+            {
+                if (Mouse.current.leftButton.wasPressedThisFrame)
+                    HandleConnectClick(tile.Value);
             }
         }
 
@@ -297,6 +306,56 @@ namespace AgentSimUnity
                 return;
             }
             // Stay in mode for chain-placement. Escape to exit.
+        }
+
+        private void HandleConnectClick(Vector3Int tile)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim == null) return;
+            var sid = sim.State.Region.Tilemap.StructureAt(tile.x, tile.y);
+            if (sid is null) return;
+            if (!sim.State.City.Structures.TryGetValue(sid.Value, out var s)) return;
+
+            // Both endpoints must be distributors of the same kind. The whole connected
+            // component is "energized" once any of its distributors touches a producer.
+            bool isDistributor = s.Type == StructureType.ElectricityDistribution
+                              || s.Type == StructureType.WaterDistribution;
+            if (!isDistributor)
+            {
+                Debug.LogWarning("[Connect] Click a distributor (ElectricityDistribution or WaterDistribution).");
+                return;
+            }
+
+            if (_connectSourceId is null)
+            {
+                _connectSourceId = sid.Value;
+                return;
+            }
+
+            if (!sim.State.City.Structures.TryGetValue(_connectSourceId.Value, out var srcDist))
+            {
+                _connectSourceId = null;
+                return;
+            }
+            if (srcDist.Type != s.Type)
+            {
+                Debug.LogWarning("[Connect] Both endpoints must be the same distributor type (power↔power or water↔water).");
+                _connectSourceId = null;
+                return;
+            }
+            var kind = s.Type == StructureType.ElectricityDistribution
+                ? NetworkKind.Power
+                : NetworkKind.Water;
+
+            try
+            {
+                sim.ConnectEdge(_connectSourceId.Value, sid.Value, kind);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Connect] Failed: {e.Message}");
+            }
+            _connectSourceId = null;
         }
 
         private void TryDemolish(Vector3Int tile)
@@ -431,6 +490,7 @@ namespace AgentSimUnity
             });
 
             GUILayout.Space(10);
+            ConnectButton();
             DemolishButton();
 
             GUILayout.Space(10);
@@ -468,6 +528,20 @@ namespace AgentSimUnity
             GUILayout.Space(6);
         }
 
+        private void ConnectButton()
+        {
+            bool active = _mode == Mode.Connect;
+            var bg = GUI.backgroundColor;
+            GUI.backgroundColor = active ? Color.cyan : new Color(0.25f, 0.45f, 0.55f, 1f);
+            if (GUILayout.Button("CONNECT"))
+            {
+                _mode = Mode.Connect;
+                _zoneDragStart = null;
+                _connectSourceId = null;
+            }
+            GUI.backgroundColor = bg;
+        }
+
         private void DemolishButton()
         {
             bool active = _mode == Mode.Demolish;
@@ -503,6 +577,9 @@ namespace AgentSimUnity
                     $"Painting: {_pendingZoneType} [{_pendingZoneSector}]  (drag rectangle, Esc to cancel)",
                 Mode.PaintZone => $"Painting: {_pendingZoneType}  (drag rectangle, Esc to cancel)",
                 Mode.Demolish => "DEMOLISH: click a structure to remove it  (Esc to cancel)",
+                Mode.Connect => _connectSourceId.HasValue
+                    ? "CONNECT: click another distributor to link  (Esc to cancel)"
+                    : "CONNECT: click a distributor (power or water)  (Esc to cancel)",
                 _ => "",
             };
             // Sit just below the UI Toolkit top bar (height 56).
@@ -514,6 +591,7 @@ namespace AgentSimUnity
         {
             _mode = Mode.Inspect;
             _zoneDragStart = null;
+            _connectSourceId = null;
             ClearGhost();
         }
 

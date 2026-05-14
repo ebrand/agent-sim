@@ -49,6 +49,10 @@ public static class SettlementMechanic
         //    rent/COL/property-tax downstream see fresh values.
         LandValueMechanic.RunMonthly(state);
 
+        // 0b. Recompute utility coverage (power / water) so service satisfaction sees current
+        //     network state. Same cadence as LV.
+        UtilityCoverageMechanic.Compute(state);
+
         // 1. Treasury outflow: monthly upkeep for treasury-funded structures. Sets
         //    UpkeepFundingFraction, which the satisfaction calc consumes in step 9.
         TreasuryUpkeepMechanic.PayMonthlyUpkeep(state);

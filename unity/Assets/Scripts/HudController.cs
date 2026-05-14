@@ -40,6 +40,7 @@ namespace AgentSimUnity
         private Button _stepBtn = null!;
         private Button _logBtn = null!;
         private Button _lvBtn = null!;
+        private Button _utilBtn = null!;
 
         // Toast stack (bottom-right).
         private VisualElement _toastList = null!;
@@ -213,6 +214,9 @@ namespace AgentSimUnity
 
             bar.Add(Flex());
 
+            _utilBtn = MakeBtn("Util (U)", ToggleUtilityCoverage);
+            bar.Add(_utilBtn);
+
             _lvBtn = MakeBtn("LV (V)", ToggleLandValue);
             bar.Add(_lvBtn);
 
@@ -330,6 +334,7 @@ namespace AgentSimUnity
             if (Keyboard.current is null) return;
             if (Keyboard.current.lKey.wasPressedThisFrame) ToggleLog();
             if (Keyboard.current.vKey.wasPressedThisFrame) ToggleLandValue();
+            if (Keyboard.current.uKey.wasPressedThisFrame) ToggleUtilityCoverage();
             if (Keyboard.current.spaceKey.wasPressedThisFrame)
             {
                 _bootstrap.CurrentSpeed = _bootstrap.IsPaused
@@ -353,6 +358,12 @@ namespace AgentSimUnity
         {
             _visualizer.ShowLandValue = !_visualizer.ShowLandValue;
             SetActive(_lvBtn, _visualizer.ShowLandValue);
+        }
+
+        private void ToggleUtilityCoverage()
+        {
+            _visualizer.ShowUtilityCoverage = !_visualizer.ShowUtilityCoverage;
+            SetActive(_utilBtn, _visualizer.ShowUtilityCoverage);
         }
 
         // ===== Toasts + log entries =====

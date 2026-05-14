@@ -27,6 +27,12 @@ public sealed class SimState
     public long AllocateStructureId() => _nextStructureId++;
     public long AllocateZoneId() => _nextZoneId++;
 
+    private long _nextEdgeId = 1;
+    public long AllocateEdgeId() => _nextEdgeId++;
+
+    /// <summary>Player-drawn distribution-network edges (producer → distributor).</summary>
+    public Dictionary<long, NetworkEdge> NetworkEdges { get; } = new();
+
     /// <summary>Append-only log of player-facing events (placements, construction, game over, ...).
     /// Capped at <see cref="EventLogMax"/> entries — oldest dropped first to avoid unbounded growth.</summary>
     public List<SimEvent> EventLog { get; } = new();

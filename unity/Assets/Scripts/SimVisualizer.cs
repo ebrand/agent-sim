@@ -26,8 +26,21 @@ namespace AgentSimUnity
         private UnityTilemap _zoneTilemap = null!;
         private UnityTilemap _structureTilemap = null!;
         private UnityTilemap _landValueTilemap = null!;
+        private UnityTilemap _utilityTilemap = null!;
         private UnityTilemap _hoverTilemap = null!;
         private Tile _gridTile = null!;
+
+        // Network-edge line rendering.
+        private GameObject _edgeContainer = null!;
+        private readonly Dictionary<long, LineRenderer> _edgeRenderers = new();
+        private Material _edgeMaterial = null!;
+        private int _lastEdgeCount = -1;
+
+        /// <summary>Toggle for the utility-coverage overlay (highlights unpowered / unwatered).</summary>
+        public bool ShowUtilityCoverage { get; set; }
+        private bool _lastShowUtility;
+        private int _lastUtilitySignature = -1;
+        private readonly HashSet<Vector3Int> _paintedUtilityCells = new();
 
         // Hover highlight tracking.
         private long? _lastHoveredStructureId;
@@ -76,14 +89,18 @@ namespace AgentSimUnity
             UpdateHoverHighlight();
         }
 
-        // Warm-yellow translucent overlay on the footprint of whichever structure the mouse is
-        // over. Skipped while placement mode is active so it doesn't fight with the ghost.
+        // Warm-yellow (or cyan in Connect mode) translucent overlay on the footprint of whichever
+        // structure the mouse is over. Suppressed only in modes that paint their own ghost
+        // (PlaceStructure / PaintZone) — Connect and Demolish leave hover available.
         private void UpdateHoverHighlight()
         {
             if (_bootstrap.Sim is null) return;
 
             var placement = GetComponent<PlacementController>();
-            if (placement != null && placement.IsActive)
+            bool suppress = placement != null
+                && (placement.CurrentMode == PlacementController.Mode.PlaceStructure
+                    || placement.CurrentMode == PlacementController.Mode.PaintZone);
+            if (suppress)
             {
                 if (_lastHoveredStructureId.HasValue) ClearHoverPaint();
                 _lastHoveredStructureId = null;
@@ -94,7 +111,7 @@ namespace AgentSimUnity
             if (hoveredId == _lastHoveredStructureId) return;
 
             ClearHoverPaint();
-            if (hoveredId is long id) PaintHoverFor(id);
+            if (hoveredId is long id) PaintHoverFor(id, placement);
             _lastHoveredStructureId = hoveredId;
         }
 
@@ -115,12 +132,25 @@ namespace AgentSimUnity
             _paintedHoverCells.Clear();
         }
 
-        private void PaintHoverFor(long structureId)
+        private void PaintHoverFor(long structureId, PlacementController? placement)
         {
             if (!_bootstrap.Sim!.State.City.Structures.TryGetValue(structureId, out var s)) return;
             if (s.X < 0 || s.Y < 0) return;
             var (w, h) = Footprint.For(s.Type);
-            var color = new Color(1f, 0.92f, 0.45f, 0.38f);
+            // Cyan when Connect mode is active and this is a valid distributor; red when it's
+            // a non-distributor (so the player sees "can't click this"); warm yellow otherwise.
+            Color color;
+            if (placement != null && placement.CurrentMode == PlacementController.Mode.Connect)
+            {
+                bool isDist = s.Type == StructureType.ElectricityDistribution
+                              || s.Type == StructureType.WaterDistribution;
+                color = isDist ? new Color(0.40f, 0.90f, 0.95f, 0.55f)
+                               : new Color(0.95f, 0.35f, 0.35f, 0.40f);
+            }
+            else
+            {
+                color = new Color(1f, 0.92f, 0.45f, 0.38f);
+            }
             var tile = TileFor(color);
             for (int dy = 0; dy < h; dy++)
             for (int dx = 0; dx < w; dx++)
@@ -153,7 +183,7 @@ namespace AgentSimUnity
         private const float CameraPitchDeg = 32f;
         private const float CameraYawDeg = 35f;
         private const float CameraFov = 50f;
-        private const float CameraInitialDistance = 140f;
+        private const float CameraInitialDistance = 80f;
         private const float CameraMinDistanceToGround = 12f;
         private const float CameraMaxDistanceToGround = 400f;
         private const float PanDragMultiplier = 1.5f;  // mouse-drag amplification beyond pixel-exact
@@ -208,6 +238,22 @@ namespace AgentSimUnity
                 _lastMaxLv = tm.MaxLandValue;
             }
 
+            // Repaint utility overlay when toggle changes or coverage state shifts.
+            int utilitySig = ComputeUtilitySignature(state);
+            if (ShowUtilityCoverage != _lastShowUtility || utilitySig != _lastUtilitySignature)
+            {
+                PaintUtilityCoverage(state);
+                _lastShowUtility = ShowUtilityCoverage;
+                _lastUtilitySignature = utilitySig;
+            }
+
+            // Sync network-edge LineRenderers when the edge set changes.
+            if (state.NetworkEdges.Count != _lastEdgeCount)
+            {
+                SyncEdgeRenderers(state);
+                _lastEdgeCount = state.NetworkEdges.Count;
+            }
+
             HandleClick();
         }
 
@@ -233,6 +279,7 @@ namespace AgentSimUnity
             var (w, h) = Footprint.For(s.Type);
             GUILayout.Label($"Footprint: {w}×{h}");
             GUILayout.Label(s.Operational ? "Status: active" : s.UnderConstruction ? "Status: building" : s.Inactive ? "Status: INACTIVE" : "Status: unknown");
+            GUILayout.Label($"Power: {(s.IsPowered ? "yes" : "NO")}   Water: {(s.IsWatered ? "yes" : "NO")}");
             GUILayout.Label($"Cash: ${s.CashBalance:N0}");
             GUILayout.Label($"Jobs: {s.EmployeeIds.Count}/{s.JobSlotsTotal()}");
             if (GUILayout.Button("Close")) _selectedStructureId = null;
@@ -240,7 +287,8 @@ namespace AgentSimUnity
         }
 
         // Lightweight tooltip floating next to the cursor — just type + status + jobs.
-        // Full detail comes from clicking (the detail panel above).
+        // Full detail comes from clicking (the detail panel above). In Connect mode, the
+        // tooltip becomes a hint about what clicking will do.
         private void DrawHoverTooltip()
         {
             if (_selectedStructureId.HasValue) return;  // detail panel is showing
@@ -248,30 +296,80 @@ namespace AgentSimUnity
             if (!_bootstrap.Sim!.State.City.Structures.TryGetValue(_lastHoveredStructureId.Value, out var s)) return;
             if (Mouse.current is null) return;
 
-            // Convert Input-System screen Y (origin bottom-left) to IMGUI Y (origin top-left).
             var mp = Mouse.current.position.ReadValue();
             float guiX = mp.x + 16f;
             float guiY = Screen.height - mp.y + 16f;
-            var rect = new Rect(guiX, guiY, 220f, 78f);
-            // Clamp so the tooltip stays on-screen.
+            var rect = new Rect(guiX, guiY, 240f, 78f);
             if (rect.x + rect.width > Screen.width) rect.x = Screen.width - rect.width - 4;
             if (rect.y + rect.height > Screen.height) rect.y = Screen.height - rect.height - 4;
+
+            var placement = GetComponent<PlacementController>();
+            bool inConnect = placement != null
+                          && placement.CurrentMode == PlacementController.Mode.Connect;
+
             GUI.Box(rect, $"{s.Type} #{s.Id}");
             GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 20, rect.width - 16, rect.height - 24));
-            string status = s.Inactive ? "INACTIVE"
-                          : s.UnderConstruction ? "building"
-                          : s.Operational ? "active" : "?";
-            GUILayout.Label($"Status: {status}");
-            if (s.Category == StructureCategory.Residential)
+
+            if (inConnect)
             {
-                int residents = CountResidents(_bootstrap.Sim!.State, s.Id);
-                GUILayout.Label($"Residents: {residents}/{s.ResidentialCapacity}");
+                DrawConnectHint(s, placement!);
             }
             else
             {
-                GUILayout.Label($"Jobs: {s.EmployeeIds.Count}/{s.JobSlotsTotal()}");
+                string status = s.Inactive ? "INACTIVE"
+                              : s.UnderConstruction ? "building"
+                              : s.Operational ? "active" : "?";
+                GUILayout.Label($"Status: {status}");
+                if (s.Category == StructureCategory.Residential)
+                {
+                    int residents = CountResidents(_bootstrap.Sim!.State, s.Id);
+                    GUILayout.Label($"Residents: {residents}/{s.ResidentialCapacity}");
+                }
+                else
+                {
+                    GUILayout.Label($"Jobs: {s.EmployeeIds.Count}/{s.JobSlotsTotal()}");
+                }
             }
             GUILayout.EndArea();
+        }
+
+        private void DrawConnectHint(Structure hovered, PlacementController placement)
+        {
+            bool isDistributor = hovered.Type == StructureType.ElectricityDistribution
+                              || hovered.Type == StructureType.WaterDistribution;
+            if (!isDistributor)
+            {
+                GUILayout.Label("Not a distributor.");
+                GUILayout.Label("Click an ElectricityDistribution or WaterDistribution.");
+                return;
+            }
+
+            // No source picked yet → this would be the source.
+            if (placement.ConnectSourceId is null)
+            {
+                GUILayout.Label("Click to start connection");
+                return;
+            }
+
+            // Source picked → check kind/type compatibility.
+            if (!_bootstrap.Sim!.State.City.Structures.TryGetValue(
+                    placement.ConnectSourceId.Value, out var src))
+            {
+                GUILayout.Label("Click to start connection");
+                return;
+            }
+            if (src.Id == hovered.Id)
+            {
+                GUILayout.Label("Same as source — pick a different distributor.");
+                return;
+            }
+            if (src.Type != hovered.Type)
+            {
+                GUILayout.Label($"Type mismatch: source is {src.Type}");
+                GUILayout.Label("Cancel (Esc) or hover a matching distributor.");
+                return;
+            }
+            GUILayout.Label($"Click to connect to #{src.Id}");
         }
 
         private static int CountResidents(SimState state, long structureId)
@@ -319,11 +417,18 @@ namespace AgentSimUnity
             _grid = gridGo.AddComponent<Grid>();
             _grid.cellSize = new Vector3(1f, 1f, 0f);
 
+            // Container for network-edge LineRenderers. Parented to the rotated grid so the
+            // lines lay flat on the ground plane along with the rest of the visuals.
+            _edgeContainer = new GameObject("NetworkEdges");
+            _edgeContainer.transform.SetParent(gridGo.transform, worldPositionStays: false);
+            _edgeMaterial = new Material(Shader.Find("Sprites/Default"));
+
             _backgroundTilemap = MakeTilemap(gridGo.transform, "Background", sortingOrder: -10);
             _zoneTilemap = MakeTilemap(gridGo.transform, "Zones", sortingOrder: 0);
             _structureTilemap = MakeTilemap(gridGo.transform, "Structures", sortingOrder: 1);
             _landValueTilemap = MakeTilemap(gridGo.transform, "LandValue", sortingOrder: 2);
-            _hoverTilemap = MakeTilemap(gridGo.transform, "Hover", sortingOrder: 3);
+            _utilityTilemap = MakeTilemap(gridGo.transform, "Utility", sortingOrder: 3);
+            _hoverTilemap = MakeTilemap(gridGo.transform, "Hover", sortingOrder: 4);
         }
 
         private void BuildGridTile()
@@ -388,7 +493,9 @@ namespace AgentSimUnity
 
             // Isometric-ish: pitch down + yaw 45°, looking down at the ground (Y=0).
             cam.transform.rotation = Quaternion.Euler(CameraPitchDeg, CameraYawDeg, 0f);
-            var target = new Vector3(16f, 0f, 16f);
+            // Aim at the middle of the 256-tile map; closer distance so the grid is visible.
+            float mid = SimTilemap.MapSize / 2f;
+            var target = new Vector3(mid, 0f, mid);
             cam.transform.position = target - cam.transform.forward * CameraInitialDistance;
             Debug.Log($"[SimVisualizer] Camera (perspective) pitch={CameraPitchDeg}° yaw={CameraYawDeg}° fov={CameraFov}, position={cam.transform.position}, rotation={cam.transform.rotation.eulerAngles}");
             cam.backgroundColor = new Color(0.05f, 0.06f, 0.08f);
@@ -671,6 +778,110 @@ namespace AgentSimUnity
             return c;
         }
 
+        // Hash that changes whenever a structure's served-state flips. Cheap diffing trigger.
+        private static int ComputeUtilitySignature(SimState state)
+        {
+            int sig = 17;
+            foreach (var s in state.City.Structures.Values)
+            {
+                int bits = (s.IsPowered ? 1 : 0) | (s.IsWatered ? 2 : 0);
+                sig = unchecked(sig * 31 + (int)s.Id * 4 + bits);
+            }
+            return sig;
+        }
+
+        private void PaintUtilityCoverage(SimState state)
+        {
+            foreach (var c in _paintedUtilityCells) _utilityTilemap.SetTile(c, null);
+            _paintedUtilityCells.Clear();
+
+            if (!ShowUtilityCoverage) return;
+
+            // Color code: red = unpowered + unwatered, orange = unwatered only,
+            // purple = unpowered only. Served structures get no overlay (clean).
+            var noPowerNoWater = new Color(0.95f, 0.30f, 0.30f, 0.55f);
+            var noPower = new Color(0.65f, 0.35f, 0.90f, 0.55f);
+            var noWater = new Color(0.95f, 0.65f, 0.30f, 0.55f);
+
+            foreach (var s in state.City.Structures.Values)
+            {
+                if (s.X < 0 || s.Y < 0) continue;
+                // Producers (Generator/Well) self-serve — skip them. Distributors are
+                // included so the player can see if a power-line / water-pipe structure is
+                // unpowered (a clear hint that the network isn't connected upstream).
+                if (s.Type == StructureType.Generator || s.Type == StructureType.Well) continue;
+                bool needPower = !s.IsPowered;
+                bool needWater = !s.IsWatered;
+                if (!needPower && !needWater) continue;
+
+                Color color = (needPower && needWater) ? noPowerNoWater
+                            : needPower ? noPower
+                            : noWater;
+                var tile = TileFor(color);
+                var (w, h) = Footprint.For(s.Type);
+                for (int dy = 0; dy < h; dy++)
+                for (int dx = 0; dx < w; dx++)
+                {
+                    var cell = new Vector3Int(s.X + dx, s.Y + dy, 0);
+                    _utilityTilemap.SetTile(cell, tile);
+                    _paintedUtilityCells.Add(cell);
+                }
+            }
+        }
+
+        private static bool IsUtilitySource(StructureType t) =>
+            t == StructureType.Generator || t == StructureType.Well
+            || t == StructureType.ElectricityDistribution || t == StructureType.WaterDistribution;
+
+        private void SyncEdgeRenderers(SimState state)
+        {
+            // Remove renderers for edges that no longer exist.
+            var stale = new List<long>();
+            foreach (var kv in _edgeRenderers)
+                if (!state.NetworkEdges.ContainsKey(kv.Key)) stale.Add(kv.Key);
+            foreach (var id in stale)
+            {
+                if (_edgeRenderers[id] != null) Destroy(_edgeRenderers[id].gameObject);
+                _edgeRenderers.Remove(id);
+            }
+
+            // Create / refresh renderers for current edges.
+            foreach (var edge in state.NetworkEdges.Values)
+            {
+                if (!state.City.Structures.TryGetValue(edge.SourceStructureId, out var src)) continue;
+                if (!state.City.Structures.TryGetValue(edge.TargetStructureId, out var tgt)) continue;
+                if (src.X < 0 || tgt.X < 0) continue;
+
+                if (!_edgeRenderers.TryGetValue(edge.Id, out var lr))
+                {
+                    var go = new GameObject($"Edge#{edge.Id}");
+                    go.transform.SetParent(_edgeContainer.transform, worldPositionStays: false);
+                    lr = go.AddComponent<LineRenderer>();
+                    lr.material = _edgeMaterial;
+                    lr.positionCount = 2;
+                    lr.startWidth = 0.1f;
+                    lr.endWidth = 0.1f;
+                    lr.useWorldSpace = false;
+                    lr.numCapVertices = 2;
+                    _edgeRenderers[edge.Id] = lr;
+                }
+                var (sw, sh) = Footprint.For(src.Type);
+                var (tw, th) = Footprint.For(tgt.Type);
+                // Local coords inside the rotated grid: (cellX, cellY, 0). After parent's
+                // +90° X rotation these render at world (cellX, 0, cellY). Place line ends at
+                // each structure's footprint center, lifted slightly so it sits above tiles.
+                var a = new Vector3(src.X + sw * 0.5f, src.Y + sh * 0.5f, -0.05f);
+                var b = new Vector3(tgt.X + tw * 0.5f, tgt.Y + th * 0.5f, -0.05f);
+                lr.SetPosition(0, a);
+                lr.SetPosition(1, b);
+                var color = edge.Kind == NetworkKind.Power
+                    ? new Color(1f, 0.92f, 0.35f, 0.9f)
+                    : new Color(0.40f, 0.75f, 0.95f, 0.9f);
+                lr.startColor = color;
+                lr.endColor = color;
+            }
+        }
+
         // ===== Interaction =====
 
         private void HandleClick()
@@ -713,6 +924,17 @@ namespace AgentSimUnity
             if (s.Inactive) return new Color(0.30f, 0.30f, 0.30f, 1f);
             if (s.UnderConstruction) return new Color(0.55f, 0.55f, 0.65f, 0.7f);
 
+            // Per-type overrides for utility production + distribution so the player can tell
+            // them apart at a glance: bold red/blue for producers, muted versions for the
+            // matching distributors.
+            switch (s.Type)
+            {
+                case StructureType.Generator: return new Color(0.90f, 0.30f, 0.25f, 1f);            // bold red
+                case StructureType.ElectricityDistribution: return new Color(0.95f, 0.65f, 0.40f, 1f);  // pale orange-red
+                case StructureType.Well: return new Color(0.20f, 0.45f, 0.85f, 1f);                 // bold blue
+                case StructureType.WaterDistribution: return new Color(0.55f, 0.80f, 0.95f, 1f);    // pale cyan
+            }
+
             return s.Category switch
             {
                 StructureCategory.Residential => new Color(0.65f, 0.45f, 0.30f, 1f),
@@ -724,7 +946,7 @@ namespace AgentSimUnity
                 StructureCategory.Civic => new Color(0.90f, 0.80f, 0.40f, 1f),
                 StructureCategory.Healthcare => new Color(0.85f, 0.50f, 0.65f, 1f),
                 StructureCategory.Education => new Color(0.40f, 0.55f, 0.85f, 1f),
-                StructureCategory.Utility => new Color(0.55f, 0.70f, 0.85f, 1f),
+                StructureCategory.Utility => new Color(0.55f, 0.70f, 0.85f, 1f),  // fallback
                 StructureCategory.Restoration => new Color(0.45f, 0.75f, 0.45f, 1f),
                 _ => Color.gray,
             };

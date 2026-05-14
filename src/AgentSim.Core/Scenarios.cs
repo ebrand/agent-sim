@@ -16,6 +16,20 @@ namespace AgentSim.Core.Calibration;
 /// </summary>
 public static class Scenarios
 {
+    /// <summary>Empty map — no zones, no structures. Player must zone residential and place
+    /// a Generator + Well to trigger the initial settler bootstrap, then provide services
+    /// (police, education, healthcare) as the city grows. Default starting scenario.</summary>
+    public static SimClass BuildEmpty()
+    {
+        return SimClass.Create(new SimConfig
+        {
+            Seed = 42,
+            StartingTreasury = 1_800_000,
+            GateBootstrapOnUtilities = true,
+            InstantConstruction = true,
+        });
+    }
+
     public static SimClass BuildMinimal()
     {
         var sim = SimClass.Create(new SimConfig { Seed = 42, StartingTreasury = 1_800_000 });

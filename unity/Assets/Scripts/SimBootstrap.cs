@@ -16,13 +16,14 @@ namespace AgentSimUnity
     [RequireComponent(typeof(SimVisualizer))]
     [RequireComponent(typeof(PlacementController))]
     [RequireComponent(typeof(HudController))]
+    [RequireComponent(typeof(ConfigServer))]
     public class SimBootstrap : MonoBehaviour
     {
-        public enum ScenarioChoice { Minimal, SelfSustaining, MidGame }
+        public enum ScenarioChoice { Empty, Minimal, SelfSustaining, MidGame }
         public enum TimeSpeed { Paused, Normal, Fast, VeryFast }
 
         [Header("Scenario")]
-        public ScenarioChoice Scenario = ScenarioChoice.Minimal;
+        public ScenarioChoice Scenario = ScenarioChoice.Empty;
 
         [Header("Time")]
         [Tooltip("Starting speed. The HUD overrides this at runtime.")]
@@ -101,9 +102,10 @@ namespace AgentSimUnity
 
         private static (Sim sim, string name) LoadScenario(ScenarioChoice c) => c switch
         {
+            ScenarioChoice.Minimal => (Scenarios.BuildMinimal(), "A: Minimal"),
             ScenarioChoice.SelfSustaining => (Scenarios.BuildSelfSustaining(), "B: Self-sustaining"),
             ScenarioChoice.MidGame => (Scenarios.BuildMidGame(), "C: Mid-game"),
-            _ => (Scenarios.BuildMinimal(), "A: Minimal"),
+            _ => (Scenarios.BuildEmpty(), "Empty"),
         };
     }
 }

@@ -45,7 +45,7 @@ public static class ZoneAutoSpawnMechanic
         if (vacancy >= 4) return;  // enough housing
         if (state.Region.AgentReservoir.Total <= 0) return;
 
-        SpawnFree(state, zone, StructureType.House, ResidentialOptions(StructureType.House));
+        SpawnFree(state, zone, StructureType.House, ResidentialOptions(state, StructureType.House));
     }
 
     private static void TrySpawnCommercial(SimState state, Zone zone)
@@ -75,7 +75,7 @@ public static class ZoneAutoSpawnMechanic
         if (anySectorShops == 0) allowedShops = Math.Max(1, allowedShops);  // seed one
         if (anySectorShops >= allowedShops) return;
 
-        SpawnFree(state, zone, StructureType.Shop, CommercialOptions(StructureType.Shop, sector));
+        SpawnFree(state, zone, StructureType.Shop, CommercialOptions(state, StructureType.Shop, sector));
     }
 
     /// <summary>Total monthly dollar demand for a sector across all working-age agents.</summary>
@@ -120,15 +120,15 @@ public static class ZoneAutoSpawnMechanic
         Dictionary<EducationTier, int>? JobSlots,
         CommercialSector? Sector);
 
-    private static SpawnInit ResidentialOptions(StructureType type) => new(
+    private static SpawnInit ResidentialOptions(SimState state, StructureType type) => new(
         ResidentialCapacity: Residential.Capacity(type),
-        RequiredConstructionTicks: Residential.BuildDurationTicks,
+        RequiredConstructionTicks: state.Config.InstantConstruction ? 0 : Residential.BuildDurationTicks,
         JobSlots: null,
         Sector: null);
 
-    private static SpawnInit CommercialOptions(StructureType type, CommercialSector sector) => new(
+    private static SpawnInit CommercialOptions(SimState state, StructureType type, CommercialSector sector) => new(
         ResidentialCapacity: 0,
-        RequiredConstructionTicks: 7,
+        RequiredConstructionTicks: state.Config.InstantConstruction ? 0 : 7,
         JobSlots: Commercial.JobSlots(type).ToDictionary(kv => kv.Key, kv => kv.Value),
         Sector: sector);
 

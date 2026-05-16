@@ -111,12 +111,12 @@ public class SpatialTests
     [InlineData(StructureType.PoliceStation)]
     [InlineData(StructureType.PaperMill)]
     [InlineData(StructureType.Hospital)]
-    public void Footprint_IsUniform2x2(StructureType type)
+    public void Footprint_IsUniform10x10(StructureType type)
     {
-        // All structures use a uniform 2×2 footprint during early playtesting.
+        // All structures use a uniform 10×10 footprint (city-block scale).
         var (w, h) = Footprint.For(type);
-        Assert.Equal(2, w);
-        Assert.Equal(2, h);
+        Assert.Equal(10, w);
+        Assert.Equal(10, h);
     }
 
     [Fact]

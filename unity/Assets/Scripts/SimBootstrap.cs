@@ -17,6 +17,8 @@ namespace AgentSimUnity
     [RequireComponent(typeof(PlacementController))]
     [RequireComponent(typeof(HudController))]
     [RequireComponent(typeof(ConfigServer))]
+    [RequireComponent(typeof(Structure3DRenderer))]
+    [RequireComponent(typeof(SceneLighting))]
     public class SimBootstrap : MonoBehaviour
     {
         public enum ScenarioChoice { Empty, Minimal, SelfSustaining, MidGame }

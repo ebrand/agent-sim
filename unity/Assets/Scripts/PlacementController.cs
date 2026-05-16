@@ -32,6 +32,7 @@ namespace AgentSimUnity
             PaintZone,
             Demolish,
             Connect,
+            PlaceRoad,
         }
 
         private SimBootstrap _bootstrap = null!;
@@ -48,8 +49,25 @@ namespace AgentSimUnity
         private CommercialSector? _pendingZoneSector;
         private long? _connectSourceId;  // first click in Connect mode
 
+        // Road tool settings — exposed for toggle UI; defaults on.
+        [Header("Road tool")]
+        public bool GridSnapEnabled = true;
+        public bool AlignmentGuidesEnabled = true;
+        public bool AngleConstraintEnabled = true;
+        public float AngleConstraintIncrementDeg = 15f;
+        /// <summary>Grid-snap step in meters. 1m = every tile, 10m = every 10 tiles, etc.</summary>
+        public float GridSnapStep = 10f;
+
+        // Anchored-start flag: true once drag starts from an existing node OR on an existing
+        // edge; while true (and constraint enabled), the cursor angle is snapped to 15°.
+        private bool _startIsAnchored;
+
         private Vector3Int? _zoneDragStart;
         private Vector2 _sidebarScroll;
+
+        // Road drawing: float-precision world-XZ points (matches Sim's Point2 coord space).
+        private Vector2? _roadDragStart;
+        private Vector2? _roadDragCurrent;
 
         // Sidebar geometry.
         private const int SidebarWidth = 220;
@@ -148,6 +166,14 @@ namespace AgentSimUnity
             if (_mode == Mode.Inspect) return;  // SimVisualizer handles inspect clicks
             if (Mouse.current is null) return;
             if (MouseInSidebar()) return;
+
+            // PlaceRoad uses float-precision points, not integer tiles, so it has its own
+            // input path that bypasses MouseToTile.
+            if (_mode == Mode.PlaceRoad)
+            {
+                HandleRoadDrag();
+                return;
+            }
 
             var tile = MouseToTile();
             if (!tile.HasValue) return;
@@ -307,6 +333,211 @@ namespace AgentSimUnity
             }
             // Stay in mode for chain-placement. Escape to exit.
         }
+
+        /// <summary>Drag-to-draw with multi-layer snapping. Precedence (highest first):
+        ///   1. Existing-node snap (always on)
+        ///   2. 15° angle constraint when starting from an anchored point (on existing node
+        ///      or existing edge) and AngleConstraintEnabled
+        ///   3. Grid snap (default-on; Alt inverts)
+        ///   4. Per-axis alignment to existing nodes (AlignmentGuidesEnabled)</summary>
+        private void HandleRoadDrag()
+        {
+            var world = MouseGroundPoint();
+            if (world is null) return;
+            bool altHeld = Keyboard.current is not null && Keyboard.current.altKey.isPressed;
+            // Alt INVERTS the default grid-snap setting.
+            bool effectiveGridSnap = GridSnapEnabled ^ altHeld;
+
+            // Snap the cursor itself (start of a new drag uses this directly).
+            var snappedCursor = SnapEndpoint(world.Value, effectiveGridSnap);
+
+            Vector2 endValue = snappedCursor;
+            if (_roadDragStart.HasValue && AngleConstraintEnabled)
+            {
+                // Angle constraint applies to every drag (no longer requires anchored start).
+                // Angles are measured from world +X axis so snapped angles align with the
+                // world grid regardless of where the road starts.
+                endValue = ApplyAngleConstraint(_roadDragStart.Value, world.Value, effectiveGridSnap);
+            }
+            _roadDragCurrent = endValue;
+
+            if (Mouse.current.leftButton.wasPressedThisFrame)
+            {
+                _roadDragStart = snappedCursor;
+                _startIsAnchored = IsAnchored(snappedCursor);
+            }
+            else if (Mouse.current.leftButton.wasReleasedThisFrame && _roadDragStart.HasValue)
+            {
+                TryPlaceRoad(_roadDragStart.Value, endValue);
+                _roadDragStart = null;
+                _roadDragCurrent = null;
+                _startIsAnchored = false;
+            }
+        }
+
+        /// <summary>True when the position is on (or snapped to) an existing road node, or
+        /// lies on an existing edge segment within a small tolerance.</summary>
+        private bool IsAnchored(Vector2 p)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim is null) return false;
+            // On-existing-node test (exact, since we already snapped).
+            foreach (var n in sim.State.RoadNodes.Values)
+            {
+                if (Mathf.Approximately(n.Position.X, p.x) && Mathf.Approximately(n.Position.Y, p.y))
+                    return true;
+            }
+            // On-existing-edge test (within 0.5 tile of any segment).
+            const float edgeTolerance = 0.5f;
+            foreach (var edge in sim.State.RoadEdges.Values)
+            {
+                if (!sim.State.RoadNodes.TryGetValue(edge.FromNodeId, out var a)) continue;
+                if (!sim.State.RoadNodes.TryGetValue(edge.ToNodeId, out var b)) continue;
+                if (PointSegmentDistance(p, a.Position, b.Position) <= edgeTolerance) return true;
+            }
+            return false;
+        }
+
+        private static float PointSegmentDistance(Vector2 p, Point2 a, Point2 b)
+        {
+            float dx = b.X - a.X, dy = b.Y - a.Y;
+            float lenSq = dx * dx + dy * dy;
+            if (lenSq < 1e-6f) return Vector2.Distance(p, new Vector2(a.X, a.Y));
+            float t = ((p.x - a.X) * dx + (p.y - a.Y) * dy) / lenSq;
+            t = Mathf.Clamp01(t);
+            float px = a.X + t * dx, py = a.Y + t * dy;
+            return Mathf.Sqrt((p.x - px) * (p.x - px) + (p.y - py) * (p.y - py));
+        }
+
+        private Vector2 ApplyAngleConstraint(Vector2 start, Vector2 rawCursor, bool gridSnap)
+        {
+            float dx = rawCursor.x - start.x;
+            float dy = rawCursor.y - start.y;
+            float distance = Mathf.Sqrt(dx * dx + dy * dy);
+            if (distance < 0.5f) return start;
+            float angleDeg = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
+            float snappedAngleDeg = Mathf.Round(angleDeg / AngleConstraintIncrementDeg)
+                                  * AngleConstraintIncrementDeg;
+            float r = snappedAngleDeg * Mathf.Deg2Rad;
+            // Optionally also snap distance to the grid step when grid snap is in play —
+            // keeps the end on a regular grid step from the start.
+            float effectiveDist = distance;
+            if (gridSnap)
+            {
+                float s = Mathf.Max(1f, GridSnapStep);
+                effectiveDist = Mathf.Max(s, Mathf.Round(distance / s) * s);
+            }
+            float ex = start.x + effectiveDist * Mathf.Cos(r);
+            float ey = start.y + effectiveDist * Mathf.Sin(r);
+            // Still allow existing-node snap on the resulting end (highest priority).
+            var snappedEnd = SnapEndpointNodeOnly(new Vector2(ex, ey));
+            return snappedEnd;
+        }
+
+        /// <summary>Node-only snap (no grid, no alignment). Used by ApplyAngleConstraint so
+        /// the angle-constrained end still snaps to an existing node if one is right there.</summary>
+        private Vector2 SnapEndpointNodeOnly(Vector2 p)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim is null) return p;
+            float bestSq = Sim.NodeSnapRadiusTiles * Sim.NodeSnapRadiusTiles;
+            Point2? best = null;
+            foreach (var n in sim.State.RoadNodes.Values)
+            {
+                float dx = n.Position.X - p.x;
+                float dy = n.Position.Y - p.y;
+                float dsq = dx * dx + dy * dy;
+                if (dsq <= bestSq) { bestSq = dsq; best = n.Position; }
+            }
+            return best.HasValue ? new Vector2(best.Value.X, best.Value.Y) : p;
+        }
+
+        /// <summary>Snap a float cursor position to the nearest existing road node if one is
+        /// within the sim's snap radius (always on). If no node is close and gridSnap is true
+        /// (e.g. Option/Alt is held), snap to the nearest integer tile. Otherwise apply
+        /// per-axis alignment snap so the visual alignment guides and the actual placement
+        /// agree.</summary>
+        public Vector2 SnapEndpoint(Vector2 p, bool gridSnap)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim is not null)
+            {
+                float bestSq = Sim.NodeSnapRadiusTiles * Sim.NodeSnapRadiusTiles;
+                Point2? best = null;
+                foreach (var node in sim.State.RoadNodes.Values)
+                {
+                    float dx = node.Position.X - p.x;
+                    float dy = node.Position.Y - p.y;
+                    float dsq = dx * dx + dy * dy;
+                    if (dsq <= bestSq) { bestSq = dsq; best = node.Position; }
+                }
+                if (best.HasValue) return new Vector2(best.Value.X, best.Value.Y);
+            }
+            if (gridSnap) return SnapToStep(p, GridSnapStep);
+            if (AlignmentGuidesEnabled) return AlignToExistingAxes(p);
+            return p;
+        }
+
+        /// <summary>Round to the nearest multiple of <paramref name="step"/>. Step is clamped
+        /// to a minimum of 1m so 0 (or a negative value) doesn't break the math.</summary>
+        public static Vector2 SnapToStep(Vector2 p, float step)
+        {
+            float s = Mathf.Max(1f, step);
+            return new Vector2(Mathf.Round(p.x / s) * s, Mathf.Round(p.y / s) * s);
+        }
+
+        /// <summary>Per-axis alignment snap: independently snap X and Y to a matching
+        /// existing node's coordinate if either is within tolerance. Symmetric with the
+        /// guide-line rendering in SimVisualizer.</summary>
+        private Vector2 AlignToExistingAxes(Vector2 p)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim is null) return p;
+            float bestXErr = SimVisualizer.AlignToleranceTiles;
+            float bestYErr = SimVisualizer.AlignToleranceTiles;
+            float snappedX = p.x, snappedY = p.y;
+            foreach (var node in sim.State.RoadNodes.Values)
+            {
+                float dx = Mathf.Abs(node.Position.X - p.x);
+                float dy = Mathf.Abs(node.Position.Y - p.y);
+                if (dx < bestXErr) { bestXErr = dx; snappedX = node.Position.X; }
+                if (dy < bestYErr) { bestYErr = dy; snappedY = node.Position.Y; }
+            }
+            return new Vector2(snappedX, snappedY);
+        }
+
+        private void TryPlaceRoad(Vector2 a, Vector2 b)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim == null) return;
+            try
+            {
+                sim.PlaceRoad(new Point2(a.x, a.y), new Point2(b.x, b.y));
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Road] Failed: {e.Message}");
+            }
+        }
+
+        /// <summary>Mouse cursor projected onto the Y=0 ground plane, returned in tile coords
+        /// (which after the SimGrid's +90° rotation == world XZ).</summary>
+        private Vector2? MouseGroundPoint()
+        {
+            var cam = Camera.main;
+            if (cam == null || Mouse.current is null) return null;
+            var screen = Mouse.current.position.ReadValue();
+            var ray = cam.ScreenPointToRay(new Vector3(screen.x, screen.y, 0));
+            if (Mathf.Abs(ray.direction.y) < 1e-5f) return null;
+            float t = -ray.origin.y / ray.direction.y;
+            if (t < 0) return null;
+            var hit = ray.origin + ray.direction * t;
+            // World X → tile X, world Z → tile Y (Sim coords use Y as the second axis).
+            return new Vector2(hit.x, hit.z);
+        }
+
+        public Vector2? RoadPreviewStart => _roadDragStart;
+        public Vector2? RoadPreviewEnd => _roadDragCurrent;
 
         private void HandleConnectClick(Vector3Int tile)
         {
@@ -490,8 +721,19 @@ namespace AgentSimUnity
             });
 
             GUILayout.Space(10);
+            RoadButton();
             ConnectButton();
             DemolishButton();
+
+            GUILayout.Space(8);
+            GUILayout.Label("ROAD SETTINGS");
+            GridSnapEnabled        = GUILayout.Toggle(GridSnapEnabled,        " Grid snap (Alt inverts)");
+            AlignmentGuidesEnabled = GUILayout.Toggle(AlignmentGuidesEnabled, " Alignment guides");
+            AngleConstraintEnabled = GUILayout.Toggle(AngleConstraintEnabled, " 15° angle constraint");
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Snap step: {GridSnapStep:F0} m", GUILayout.Width(110));
+            GridSnapStep = Mathf.Round(GUILayout.HorizontalSlider(GridSnapStep, 1f, 25f));
+            GUILayout.EndHorizontal();
 
             GUILayout.Space(10);
             if (_mode != Mode.Inspect && GUILayout.Button("Cancel (Esc)"))
@@ -526,6 +768,20 @@ namespace AgentSimUnity
                 StructureButton(t);
             }
             GUILayout.Space(6);
+        }
+
+        private void RoadButton()
+        {
+            bool active = _mode == Mode.PlaceRoad;
+            var bg = GUI.backgroundColor;
+            GUI.backgroundColor = active ? Color.green : new Color(0.20f, 0.55f, 0.30f, 1f);
+            if (GUILayout.Button("ROAD"))
+            {
+                _mode = Mode.PlaceRoad;
+                _roadDragStart = null;
+                _roadDragCurrent = null;
+            }
+            GUI.backgroundColor = bg;
         }
 
         private void ConnectButton()
@@ -580,6 +836,9 @@ namespace AgentSimUnity
                 Mode.Connect => _connectSourceId.HasValue
                     ? "CONNECT: click another distributor to link  (Esc to cancel)"
                     : "CONNECT: click a distributor (power or water)  (Esc to cancel)",
+                Mode.PlaceRoad => _roadDragStart.HasValue
+                    ? "ROAD: release left mouse to commit segment  (Esc to cancel)"
+                    : "ROAD: click + drag to draw a road segment  (Esc to cancel)",
                 _ => "",
             };
             // Sit just below the UI Toolkit top bar (height 56).
@@ -592,6 +851,8 @@ namespace AgentSimUnity
             _mode = Mode.Inspect;
             _zoneDragStart = null;
             _connectSourceId = null;
+            _roadDragStart = null;
+            _roadDragCurrent = null;
             ClearGhost();
         }
 

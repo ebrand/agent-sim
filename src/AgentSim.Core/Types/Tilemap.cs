@@ -7,7 +7,7 @@ namespace AgentSim.Core.Types;
 /// </summary>
 public sealed class Tilemap
 {
-    public const int MapSize = 256;
+    public const int MapSize = 1024;
 
     private readonly long?[,] _structureAt = new long?[MapSize, MapSize];
     private readonly long?[,] _zoneAt = new long?[MapSize, MapSize];

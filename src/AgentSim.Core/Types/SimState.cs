@@ -33,6 +33,17 @@ public sealed class SimState
     /// <summary>Player-drawn distribution-network edges (producer → distributor).</summary>
     public Dictionary<long, NetworkEdge> NetworkEdges { get; } = new();
 
+    private long _nextRoadNodeId = 1;
+    private long _nextRoadEdgeId = 1;
+    public long AllocateRoadNodeId() => _nextRoadNodeId++;
+    public long AllocateRoadEdgeId() => _nextRoadEdgeId++;
+
+    /// <summary>Transportation-graph nodes — player endpoints and auto-created intersections.</summary>
+    public Dictionary<long, RoadNode> RoadNodes { get; } = new();
+
+    /// <summary>Transportation-graph edges — one straight segment between two nodes.</summary>
+    public Dictionary<long, RoadEdge> RoadEdges { get; } = new();
+
     /// <summary>Append-only log of player-facing events (placements, construction, game over, ...).
     /// Capped at <see cref="EventLogMax"/> entries — oldest dropped first to avoid unbounded growth.</summary>
     public List<SimEvent> EventLog { get; } = new();

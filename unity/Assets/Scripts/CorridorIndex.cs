@@ -49,6 +49,7 @@ namespace AgentSimUnity
             CellInfo? best = null;
             foreach (var e in state.RoadEdges.Values)
             {
+                if (e.ControlPoint.HasValue) continue;  // curved edges don't have corridor cells in v1
                 if (!state.RoadNodes.TryGetValue(e.FromNodeId, out var fn)) continue;
                 if (!state.RoadNodes.TryGetValue(e.ToNodeId, out var tn)) continue;
                 float fx = fn.Position.X, fy = fn.Position.Y;
@@ -121,6 +122,7 @@ namespace AgentSimUnity
                 foreach (var o in state.RoadEdges.Values)
                 {
                     if (o.Id == edgeId) continue;
+                    if (o.ControlPoint.HasValue) continue;  // curves don't participate in Voronoi cull yet
                     if (!state.RoadNodes.TryGetValue(o.FromNodeId, out var ofn)) continue;
                     if (!state.RoadNodes.TryGetValue(o.ToNodeId, out var otn)) continue;
                     if (PointSegmentDistance(cx, cy, ofn.Position.X, ofn.Position.Y,

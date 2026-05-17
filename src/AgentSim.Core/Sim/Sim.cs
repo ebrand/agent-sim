@@ -152,22 +152,22 @@ public sealed class Sim
     }
 
     /// <summary>Mark a corridor cell as residentially zoned. Cell is identified by its
-    /// road edge, along-index (cell along the road), and side (+1/-1 = left/right of
-    /// FromNode→ToNode direction). Idempotent — re-zoning a cell is a no-op. Front-row
-    /// (perpCell=0) only; deeper rows aren't load-bearing for auto-spawn.</summary>
-    public void ZoneCorridorCellResidential(long edgeId, int alongCell, int side)
+    /// road edge, along-index, perp-index (0 = front row adjacent to road), and side
+    /// (+1/-1 = left/right of FromNode→ToNode direction). Idempotent. Only PerpCell=0
+    /// cells drive auto-spawn; deeper rows are visual / informational.</summary>
+    public void ZoneCorridorCellResidential(long edgeId, int alongCell, int perpCell, int side)
     {
-        State.City.ZonedResidentialCells.Add((edgeId, alongCell, side));
+        State.City.ZonedResidentialCells.Add((edgeId, alongCell, perpCell, side));
     }
 
     /// <summary>Remove a corridor cell from the residential-zoned set. No-op if not zoned.</summary>
-    public void UnzoneCorridorCell(long edgeId, int alongCell, int side)
+    public void UnzoneCorridorCell(long edgeId, int alongCell, int perpCell, int side)
     {
-        State.City.ZonedResidentialCells.Remove((edgeId, alongCell, side));
+        State.City.ZonedResidentialCells.Remove((edgeId, alongCell, perpCell, side));
     }
 
-    public bool IsCorridorCellZonedResidential(long edgeId, int alongCell, int side)
-        => State.City.ZonedResidentialCells.Contains((edgeId, alongCell, side));
+    public bool IsCorridorCellZonedResidential(long edgeId, int alongCell, int perpCell, int side)
+        => State.City.ZonedResidentialCells.Contains((edgeId, alongCell, perpCell, side));
 
     /// <summary>Set the structure's position (X, Y) and mark the tilemap. Throws if the spot is
     /// invalid (out of bounds, overlapping, or — for zoned structures — not in the right zone).
@@ -824,6 +824,44 @@ public sealed class Sim
         State.LogEvent(SimEventSeverity.Info, "Road",
             $"Drew {lanesForward}+{lanesBackward}-lane road: {newEdges.Count} edge(s), {crossings.Count} new junction(s)");
         return newEdges;
+    }
+
+    /// <summary>Place a curved road (quadratic Bezier) from start to end with the given
+    /// control point. Returns the single edge that was created. V1: no auto-split for
+    /// curves — if the curve crosses an existing edge, both edges coexist visually but
+    /// the graph stays disconnected at the crossing. Caller is expected to have already
+    /// snapped <paramref name="start"/> to an existing node (per the curve-UX contract).</summary>
+    public RoadEdge PlaceCurvedRoad(Point2 start, Point2 control, Point2 end,
+                                     int lanesForward = 1, int lanesBackward = 1)
+    {
+        if (!InsideMap(start) || !InsideMap(end))
+            throw new InvalidOperationException("Road endpoints must be inside the map.");
+        if (lanesForward < 0 || lanesBackward < 0)
+            throw new InvalidOperationException("Lane counts cannot be negative.");
+        if (lanesForward + lanesBackward < 1)
+            throw new InvalidOperationException("Road must have at least one lane total.");
+
+        // Reuse existing nodes if the player clicked very close to one (matches straight-
+        // road behavior — keeps the graph connected at endpoints).
+        long startNodeId = FindOrCreateNode(start);
+        long endNodeId = FindOrCreateNode(end);
+        if (startNodeId == endNodeId)
+            throw new InvalidOperationException("Curve endpoints resolve to the same node.");
+
+        var edge = new RoadEdge
+        {
+            Id = State.AllocateRoadEdgeId(),
+            FromNodeId = startNodeId,
+            ToNodeId = endNodeId,
+            LanesForward = lanesForward,
+            LanesBackward = lanesBackward,
+            ControlPoint = control,
+        };
+        State.RoadEdges[edge.Id] = edge;
+
+        State.LogEvent(SimEventSeverity.Info, "Road",
+            $"Drew curved {lanesForward}+{lanesBackward}-lane road (edge #{edge.Id})");
+        return edge;
     }
 
     /// <summary>Move a road node to a new position. All edges referencing this node by id

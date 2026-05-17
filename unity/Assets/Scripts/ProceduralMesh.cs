@@ -360,12 +360,97 @@ namespace AgentSimUnity
             tris.Add(a); tris.Add(c); tris.Add(d);
         }
 
+        /// <summary>One mesh containing N independent dashed line segments lying flat on
+        /// the ground plane. Each segment is given as (from, to) in SimGrid-local tile
+        /// coords. Used for road-node extension guides.</summary>
+        public static Mesh BuildDashedLines(
+            System.Collections.Generic.IReadOnlyList<(Vector2 from, Vector2 to)> lines,
+            float dashLen, float gapLen, float lineWidth,
+            Color color,
+            float elevation = 0.07f,
+            Mesh? reuseMesh = null)
+        {
+            var mesh = reuseMesh ?? new Mesh { name = "DashedLines" };
+            mesh.Clear();
+            if (lines.Count == 0) return mesh;
+            var verts  = new List<Vector3>();
+            var colors = new List<Color>();
+            var tris   = new List<int>();
+            foreach (var (from, to) in lines)
+                AddDashedSegment(verts, colors, tris,
+                                 from.x, from.y, to.x, to.y,
+                                 dashLen, gapLen, lineWidth, color, elevation);
+            mesh.SetVertices(verts);
+            mesh.SetColors(colors);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        /// <summary>Dashed quad lying flat on the ground plane, defined by 4 corners in
+        /// SimGrid-local tile coords (must be in winding order around the perimeter).
+        /// Parent the GO under the SimGrid so the +90° X rotation maps the mesh onto the
+        /// world XZ ground plane. Used by the residential zone-selection marquee, which
+        /// rotates the rectangle to match the start corridor's orientation.</summary>
+        public static Mesh BuildDashedQuad(Vector2 c0, Vector2 c1, Vector2 c2, Vector2 c3,
+                                            float dashLen, float gapLen, float lineWidth,
+                                            Color color,
+                                            float elevation = 0.09f,
+                                            Mesh? reuseMesh = null)
+        {
+            var mesh = reuseMesh ?? new Mesh { name = "DashedQuad" };
+            mesh.Clear();
+
+            var verts  = new List<Vector3>();
+            var colors = new List<Color>();
+            var tris   = new List<int>();
+            AddDashedSegment(verts, colors, tris, c0.x, c0.y, c1.x, c1.y, dashLen, gapLen, lineWidth, color, elevation);
+            AddDashedSegment(verts, colors, tris, c1.x, c1.y, c2.x, c2.y, dashLen, gapLen, lineWidth, color, elevation);
+            AddDashedSegment(verts, colors, tris, c2.x, c2.y, c3.x, c3.y, dashLen, gapLen, lineWidth, color, elevation);
+            AddDashedSegment(verts, colors, tris, c3.x, c3.y, c0.x, c0.y, dashLen, gapLen, lineWidth, color, elevation);
+
+            mesh.SetVertices(verts);
+            mesh.SetColors(colors);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static void AddDashedSegment(List<Vector3> verts, List<Color> colors, List<int> tris,
+                                              float sx, float sy, float ex, float ey,
+                                              float dashLen, float gapLen, float lineWidth,
+                                              Color color, float elevation)
+        {
+            float dx = ex - sx, dy = ey - sy;
+            float len = Mathf.Sqrt(dx * dx + dy * dy);
+            if (len < 1e-4f) return;
+            float ddx = dx / len, ddy = dy / len;
+            float pdx = -ddy, pdy = ddx;
+            float period = dashLen + gapLen;
+            float halfW = lineWidth * 0.5f;
+            for (float t = 0f; t < len; t += period)
+            {
+                float t0 = t;
+                float t1 = Mathf.Min(t + dashLen, len);
+                if (t1 - t0 < 0.05f) continue;
+                Vector3 p0a = new(sx + t0 * ddx + pdx * halfW, sy + t0 * ddy + pdy * halfW, -elevation);
+                Vector3 p0b = new(sx + t0 * ddx - pdx * halfW, sy + t0 * ddy - pdy * halfW, -elevation);
+                Vector3 p1a = new(sx + t1 * ddx + pdx * halfW, sy + t1 * ddy + pdy * halfW, -elevation);
+                Vector3 p1b = new(sx + t1 * ddx - pdx * halfW, sy + t1 * ddy - pdy * halfW, -elevation);
+                int i = verts.Count;
+                verts.Add(p0a); verts.Add(p0b); verts.Add(p1b); verts.Add(p1a);
+                colors.Add(color); colors.Add(color); colors.Add(color); colors.Add(color);
+                tris.Add(i); tris.Add(i + 2); tris.Add(i + 1);
+                tris.Add(i); tris.Add(i + 3); tris.Add(i + 2);
+            }
+        }
+
         /// <summary>Overlay mesh for corridor cells across MULTIPLE road edges — one filled
         /// quad per cell. Used for short-lived previews (selection highlight) where cells
         /// can come from different edges and the set changes every frame; one mesh + one
         /// GameObject is cheaper than the per-edge GO churn of the permanent overlay.</summary>
         public static Mesh BuildMultiEdgeCellsOverlay(
-            System.Collections.Generic.IReadOnlyList<(long edgeId, int alongCell, int side)> cells,
+            System.Collections.Generic.IReadOnlyList<(long edgeId, int alongCell, int perpCell, int side)> cells,
             System.Func<long, (float fx, float fy, float tx, float ty, float setback)?> edgeLookup,
             float stepSize,
             Color color,
@@ -380,7 +465,7 @@ namespace AgentSimUnity
             var colors = new List<Color>(cells.Count * 4);
             var tris   = new List<int>(cells.Count * 6);
 
-            foreach (var (edgeId, alongCell, side) in cells)
+            foreach (var (edgeId, alongCell, perpCell, side) in cells)
             {
                 var info = edgeLookup(edgeId);
                 if (info is null) continue;
@@ -391,12 +476,12 @@ namespace AgentSimUnity
                 float ddx = dx / len, ddy = dy / len;
                 float pdx = -ddy, pdy = ddx;
 
-                if (alongCell < 0) continue;
+                if (alongCell < 0 || perpCell < 0) continue;
                 float alongMin = alongCell * stepSize;
                 float alongMax = Mathf.Min(alongMin + stepSize, len);
                 if (alongMin >= len) continue;
-                float perpMin = setback;
-                float perpMax = setback + stepSize;
+                float perpMin = setback + perpCell * stepSize;
+                float perpMax = perpMin + stepSize;
                 if (side < 0) { float t = perpMin; perpMin = -perpMax; perpMax = -t; }
 
                 Vector3 c00 = ToLocal(sx, sy, ddx, ddy, pdx, pdy, alongMin, perpMin, elevation);
@@ -419,11 +504,11 @@ namespace AgentSimUnity
         }
 
         /// <summary>Overlay mesh for zoned corridor cells on a single road edge — filled
-        /// quads at each (alongCell, side) entry, sitting slightly above the corridor
-        /// outline mesh and below the structures. perpCell is always 0 (front row).</summary>
+        /// quads at each (alongCell, perpCell, side) entry, sitting slightly above the
+        /// corridor outline mesh and below the structures.</summary>
         public static Mesh BuildZonedCellsOverlay(float sx, float sy, float ex, float ey,
                                                    float stepSize, float setback,
-                                                   IReadOnlyList<(int alongCell, int side)> cells,
+                                                   IReadOnlyList<(int alongCell, int perpCell, int side)> cells,
                                                    Color color,
                                                    float elevation = 0.015f,
                                                    Mesh? reuseMesh = null)
@@ -440,14 +525,14 @@ namespace AgentSimUnity
             var colors = new List<Color>(cells.Count * 4);
             var tris   = new List<int>(cells.Count * 6);
 
-            foreach (var (alongCell, side) in cells)
+            foreach (var (alongCell, perpCell, side) in cells)
             {
-                if (alongCell < 0) continue;
+                if (alongCell < 0 || perpCell < 0) continue;
                 float alongMin = alongCell * stepSize;
                 float alongMax = Mathf.Min(alongMin + stepSize, len);
                 if (alongMin >= len) continue;
-                float perpMin = setback;
-                float perpMax = setback + stepSize;
+                float perpMin = setback + perpCell * stepSize;
+                float perpMax = perpMin + stepSize;
                 if (side < 0) { float t = perpMin; perpMin = -perpMax; perpMax = -t; }
 
                 Vector3 c00 = ToLocal(sx, sy, ddx, ddy, pdx, pdy, alongMin, perpMin, elevation);

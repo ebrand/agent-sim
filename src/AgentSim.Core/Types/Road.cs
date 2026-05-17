@@ -33,4 +33,11 @@ public sealed class RoadEdge
     /// <summary>Render width in tiles: <c>lanes × 4m + 2m</c> (1m shoulder each side).
     /// Sim treats 1 tile = 1m so this is also tile units. Default 1+1 → 10 tiles.</summary>
     public float WidthTiles => TotalLanes * 4f + 2f;
+
+    /// <summary>Quadratic-Bezier control point in tile coordinates. Null = straight edge
+    /// (rendered/iterated as a line from FromNode to ToNode). Non-null = curved edge: the
+    /// geometry is B(t) = (1-t)² · From + 2(1-t)t · ControlPoint + t² · To.
+    /// V1 limitations: curved edges skip corridor/snap/zoning paths and aren't auto-split
+    /// when other roads cross them.</summary>
+    public Point2? ControlPoint { get; init; }
 }

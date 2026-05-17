@@ -12,11 +12,12 @@ public sealed class City
     public Dictionary<long, Structure> Structures { get; } = new();
     public Dictionary<long, Zone> Zones { get; } = new();
 
-    /// <summary>Corridor cells marked as residentially zoned. Each entry is the FRONT-ROW
-    /// cell (perpCell = 0) on a specific road edge + side. A structure's 4 front-edge cells
-    /// must all be in this set for auto-spawn to consider the location; manual placement
-    /// can override (freeform path). Keyed by (EdgeId, AlongCell, Side) — Side is +1/-1.</summary>
-    public HashSet<(long EdgeId, int AlongCell, int Side)> ZonedResidentialCells { get; } = new();
+    /// <summary>Corridor cells marked as residentially zoned. Any (EdgeId, AlongCell,
+    /// PerpCell, Side) combination is allowed — PerpCell 0 is the front row adjacent to
+    /// the road; deeper rows can be zoned visually too, but only front-row zoned cells
+    /// drive auto-spawn (a structure's 4 front-edge cells must be in this set with
+    /// PerpCell = 0). Side is +1 (left of FromNode→ToNode) or -1 (right).</summary>
+    public HashSet<(long EdgeId, int AlongCell, int PerpCell, int Side)> ZonedResidentialCells { get; } = new();
 
     public int Population => Agents.Count;
 

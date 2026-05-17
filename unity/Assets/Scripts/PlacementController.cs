@@ -33,6 +33,7 @@ namespace AgentSimUnity
             Demolish,
             Connect,
             PlaceRoad,
+            PlaceCurvedRoad,
         }
 
         private SimBootstrap _bootstrap = null!;
@@ -56,12 +57,15 @@ namespace AgentSimUnity
         // Residential zoning selection: two-click marquee. First click captures _zoneSelStart;
         // subsequent mouse moves update the highlight mesh (all corridor cells whose center
         // lies in the AABB from start to cursor); second click zones those cells.
-        private struct ZoneSelStart { public Vector2 World; public long EdgeId; public int AlongCell; public int Side; }
+        private struct ZoneSelStart { public Vector2 World; public long EdgeId; public int AlongCell; public int PerpCell; public int Side; public bool IsAdd; }
         private ZoneSelStart? _zoneSelStart;
         private GameObject? _zoneSelHighlightGO;
         private Mesh? _zoneSelHighlightMesh;
-        private readonly List<(long edgeId, int alongCell, int side)> _zoneSelHighlightCells = new();
+        private GameObject? _zoneSelRectGO;
+        private Mesh? _zoneSelRectMesh;
+        private readonly List<(long edgeId, int alongCell, int perpCell, int side)> _zoneSelHighlightCells = new();
         private static readonly Color ZoneSelHighlightColor = new(1.0f, 0.85f, 0.30f, 0.35f);
+        private static readonly Color ZoneSelRemoveColor    = new(0.95f, 0.30f, 0.25f, 0.40f);
 
         private Mode _mode = Mode.Inspect;
         private StructureType _pendingStructureType;
@@ -90,6 +94,31 @@ namespace AgentSimUnity
         private Vector2? _roadDragStart;
         private Vector2? _roadDragCurrent;
 
+        // Curved road: 3-click flow. P0 = start node (must snap to existing); P1 = control
+        // point (free); P2 = end (cursor, optional snap). Preview LineRenderer reuses the
+        // road-preview material. _curveStartNodeId is captured at click 1 so we can derive
+        // extension guides from the node's attached edges (one dashed ray per edge,
+        // pointing away from the other endpoint). Cursor snaps to those rays during click 2.
+        private Vector2? _curveP0;
+        private Vector2? _curveP1;
+        private long? _curveStartNodeId;
+        private LineRenderer? _curvePreview;
+        private GameObject? _curveExtensionsGO;
+        private Mesh? _curveExtensionsMesh;
+        // Axis-alignment guide for clicks 2 + 3: dashed lines through the X/Y-aligned
+        // node when the cursor lines up with another existing node on either axis.
+        private GameObject? _curveAlignmentGO;
+        private Mesh? _curveAlignmentMesh;
+        // Translucent ghost circle that follows the snapped cursor during click 2 + click 3,
+        // matching the straight-road tool's "where the new node lands" affordance.
+        private GameObject? _curveGhostNode;
+        // All multi-click curve UX guides (extensions, alignment, etc.) share this cyan.
+        private static readonly Color CurveGuideColor = new(0.20f, 0.85f, 0.95f, 0.80f);
+        // Snap radius for the cursor-vs-extension test, in tile units (1u at default step).
+        private const float ExtensionSnapRadiusTiles = 5f;
+        // How far past the node each extension line is drawn, in tile units.
+        private const float ExtensionLineLengthTiles = 200f;
+
         // Sidebar geometry.
         private const int SidebarWidth = 220;
         private const int SidebarPad = 12;
@@ -98,6 +127,10 @@ namespace AgentSimUnity
         public Mode CurrentMode => _mode;
         public ZoneType CurrentZoneType => _pendingZoneType;
         public StructureType CurrentStructureType => _pendingStructureType;
+        /// <summary>True when right-click is bound to "remove from zone selection" — the
+        /// camera should not interpret right-button as a pan drag while this is active.</summary>
+        public bool RightClickReservedForZoning =>
+            _mode == Mode.PaintZone && _pendingZoneType == ZoneType.Residential;
         public long? ConnectSourceId => _connectSourceId;
 
         void Awake()
@@ -123,6 +156,57 @@ namespace AgentSimUnity
         {
             DrawSidebar();
             if (_mode != Mode.Inspect) DrawModeStrip();
+            if (_mode == Mode.PlaceCurvedRoad) DrawCurveDistanceLabels();
+        }
+
+        /// <summary>Show "Nu" labels at the midpoint of each tangent segment while the
+        /// curve is being placed. State 1: distance from start node to snapped cursor.
+        /// State 2: locked P0→P1 distance + live P1→cursor distance.</summary>
+        private void DrawCurveDistanceLabels()
+        {
+            if (_curveP0 is null) return;
+            var cam = Camera.main;
+            if (cam == null) return;
+            float step = Mathf.Max(1f, GridSnapStep);
+
+            var raw = MouseGroundPoint();
+            if (_curveP1 is null)
+            {
+                if (!raw.HasValue) return;
+                var snapped = SnapCurveCursor(raw.Value, isClick2: true);
+                float d = Vector2.Distance(_curveP0.Value, snapped);
+                if (d > 0.5f)
+                    DrawSegmentLabel(cam, _curveP0.Value, snapped,
+                                     $"{Mathf.RoundToInt(d / step)}u");
+            }
+            else
+            {
+                float d1 = Vector2.Distance(_curveP0.Value, _curveP1.Value);
+                if (d1 > 0.5f)
+                    DrawSegmentLabel(cam, _curveP0.Value, _curveP1.Value,
+                                     $"{Mathf.RoundToInt(d1 / step)}u");
+                if (raw.HasValue)
+                {
+                    var snapped = SnapCurveCursor(raw.Value, isClick2: false);
+                    if (FindSnappedNodeId(snapped) is null)
+                    {
+                        float d2 = Vector2.Distance(_curveP1.Value, snapped);
+                        if (d2 > 0.5f)
+                            DrawSegmentLabel(cam, _curveP1.Value, snapped,
+                                             $"{Mathf.RoundToInt(d2 / step)}u");
+                    }
+                }
+            }
+        }
+
+        private static void DrawSegmentLabel(Camera cam, Vector2 fromTile, Vector2 toTile, string text)
+        {
+            var mid = (fromTile + toTile) * 0.5f;
+            var screen = cam.WorldToScreenPoint(new Vector3(mid.x, 0f, mid.y));
+            if (screen.z < 0) return;
+            const float w = 50f, h = 20f;
+            var rect = new Rect(screen.x - w * 0.5f, Screen.height - screen.y - h * 0.5f, w, h);
+            GUI.Box(rect, text);
         }
 
         // === Setup ===
@@ -197,6 +281,12 @@ namespace AgentSimUnity
                 HandleRoadDrag();
                 return;
             }
+            if (_mode == Mode.PlaceCurvedRoad)
+            {
+                if (Mouse.current.leftButton.wasPressedThisFrame)
+                    HandleCurvedRoadClick();
+                return;
+            }
 
             var tile = MouseToTile();
             if (!tile.HasValue) return;
@@ -210,9 +300,19 @@ namespace AgentSimUnity
             {
                 if (_pendingZoneType == ZoneType.Residential)
                 {
-                    // Two-click marquee: 1st click = start, 2nd click = commit.
+                    // LMB = add, RMB = remove. Same drag model either way; only the matching
+                    // button's release commits, so cross-button presses don't accidentally
+                    // toggle the operation mid-drag.
                     if (Mouse.current.leftButton.wasPressedThisFrame)
-                        HandleResidentialZoneClick();
+                        BeginResidentialZoneSelection(isAdd: true);
+                    else if (Mouse.current.rightButton.wasPressedThisFrame)
+                        BeginResidentialZoneSelection(isAdd: false);
+                    else if (Mouse.current.leftButton.wasReleasedThisFrame
+                          && _zoneSelStart.HasValue && _zoneSelStart.Value.IsAdd)
+                        CommitResidentialZoneSelection();
+                    else if (Mouse.current.rightButton.wasReleasedThisFrame
+                          && _zoneSelStart.HasValue && !_zoneSelStart.Value.IsAdd)
+                        CommitResidentialZoneSelection();
                 }
                 else
                 {
@@ -243,6 +343,8 @@ namespace AgentSimUnity
         {
             ClearGhost();
             HideZoneCellOutline();  // re-shown below if we're in residential paint mode
+            if (_mode == Mode.PlaceCurvedRoad) UpdateCurvePreview();
+            else HideCurvePreview();
             if (_mode == Mode.Inspect) return;
             if (MouseInSidebar()) return;
             var tile = MouseToTile();
@@ -267,19 +369,28 @@ namespace AgentSimUnity
             }
             else if (_mode == Mode.PaintZone && _pendingZoneType == ZoneType.Residential)
             {
-                // Single-cell outline at cursor + (if selection in progress) filled rectangle
-                // highlight from start to current.
-                UpdateZoneCellOutline();
                 if (_zoneSelStart.HasValue)
                 {
+                    // During drag: hide the single-cell hover, show the dashed marquee +
+                    // filled cell highlight.
+                    HideZoneCellOutline();
                     var cur = MouseGroundPoint();
                     if (cur.HasValue)
-                        UpdateZoneSelHighlight(_zoneSelStart.Value.World,
-                                               SnapToHoveredCellCenter(cur.Value));
-                    else HideZoneSelHighlight();
+                    {
+                        UpdateZoneSelRect(_zoneSelStart.Value, cur.Value);
+                        UpdateZoneSelHighlight(cur.Value);
+                    }
+                    else
+                    {
+                        HideZoneSelRect();
+                        HideZoneSelHighlight();
+                    }
                 }
                 else
                 {
+                    // Idle: just the hover outline showing what would be the start cell.
+                    UpdateZoneCellOutline();
+                    HideZoneSelRect();
                     HideZoneSelHighlight();
                 }
                 return;
@@ -555,6 +666,7 @@ namespace AgentSimUnity
 
             foreach (var e in state.RoadEdges.Values)
             {
+                if (e.ControlPoint.HasValue) continue;  // v1: curves don't have setbacks for encroachment
                 if (!state.RoadNodes.TryGetValue(e.FromNodeId, out var fn)) continue;
                 if (!state.RoadNodes.TryGetValue(e.ToNodeId, out var tn)) continue;
                 float fx = fn.Position.X, fy = fn.Position.Y;
@@ -596,7 +708,8 @@ namespace AgentSimUnity
                                                   stepSize, SimVisualizer.CorridorDepthCells);
             if (cell is null) { HideZoneCellOutline(); return; }
             if (!CorridorIndex.IsCellRendered(sim.State, cell.Value.EdgeId,
-                                              cell.Value.AlongCell, 0, cell.Value.Side, stepSize))
+                                              cell.Value.AlongCell, cell.Value.PerpCell,
+                                              cell.Value.Side, stepSize))
             { HideZoneCellOutline(); return; }
 
             if (!sim.State.RoadEdges.TryGetValue(cell.Value.EdgeId, out var edge)) { HideZoneCellOutline(); return; }
@@ -612,11 +725,12 @@ namespace AgentSimUnity
             float setback = edge.WidthTiles * 0.5f;
             int side = cell.Value.Side;
             int alongCell = cell.Value.AlongCell;
+            int perpCell = cell.Value.PerpCell;
 
             float alongMin = alongCell * stepSize;
             float alongMax = Mathf.Min(alongMin + stepSize, len);
-            float perpMin = setback;
-            float perpMax = setback + stepSize;
+            float perpMin = setback + perpCell * stepSize;
+            float perpMax = perpMin + stepSize;
             if (side < 0) { float t = perpMin; perpMin = -perpMax; perpMax = -t; }
             const float yLift = 0.08f;  // above zone overlay fill, below house ghost
 
@@ -638,119 +752,162 @@ namespace AgentSimUnity
             _zoneCellOutline.endColor = ZoneCellHoverColor;
         }
 
-        /// <summary>Handle a click in Residential paint mode. First click = capture the
-        /// start cell. Second click = commit (zones every highlighted cell). Click off-
-        /// corridor while starting = no-op; click off-corridor while committing = still
-        /// commits whatever cells are currently in the rectangle.</summary>
-        private void HandleResidentialZoneClick()
+        /// <summary>Mouse-down handler. Captures the start cell (cursor must be over a
+        /// Voronoi-rendered corridor cell). The selection rectangle uses this edge's
+        /// orientation, so all four sides of the marquee are road-aligned, not world-aligned.</summary>
+        private void BeginResidentialZoneSelection(bool isAdd)
         {
             var sim = _bootstrap.Sim;
             if (sim == null) return;
             var world = MouseGroundPoint();
             if (world is null) return;
             float stepSize = Mathf.Max(1f, GridSnapStep);
-
-            if (_zoneSelStart is null)
+            var cell = CorridorIndex.LocateCellAt(sim.State, world.Value.x, world.Value.y,
+                                                  stepSize, SimVisualizer.CorridorDepthCells);
+            if (cell is null) return;
+            // Start cell can be in ANY perp row, not just the front. Cursor's row wins.
+            if (!CorridorIndex.IsCellRendered(sim.State, cell.Value.EdgeId,
+                                              cell.Value.AlongCell, cell.Value.PerpCell,
+                                              cell.Value.Side, stepSize))
+                return;
+            var (csx, csy) = CorridorIndex.CellCenterWorld(sim.State, cell.Value.EdgeId,
+                cell.Value.AlongCell, cell.Value.PerpCell, cell.Value.Side, stepSize);
+            _zoneSelStart = new ZoneSelStart
             {
-                var cell = CorridorIndex.LocateCellAt(sim.State, world.Value.x, world.Value.y,
-                                                      stepSize, SimVisualizer.CorridorDepthCells);
-                if (cell is null) return;
-                if (!CorridorIndex.IsCellRendered(sim.State, cell.Value.EdgeId,
-                                                  cell.Value.AlongCell, 0, cell.Value.Side, stepSize))
-                    return;
-                // Store the cell's CENTER (not the click pixel) so the AABB-vs-center test
-                // includes the start cell when the user commits without moving.
-                var (csx, csy) = CorridorIndex.CellCenterWorld(sim.State, cell.Value.EdgeId,
-                    cell.Value.AlongCell, 0, cell.Value.Side, stepSize);
-                _zoneSelStart = new ZoneSelStart
-                {
-                    World = new Vector2(csx, csy),
-                    EdgeId = cell.Value.EdgeId,
-                    AlongCell = cell.Value.AlongCell,
-                    Side = cell.Value.Side,
-                };
+                World = new Vector2(csx, csy),
+                EdgeId = cell.Value.EdgeId,
+                AlongCell = cell.Value.AlongCell,
+                PerpCell = cell.Value.PerpCell,
+                Side = cell.Value.Side,
+                IsAdd = isAdd,
+            };
+        }
+
+        /// <summary>Mouse-up handler. Zones every cell currently inside the road-aligned
+        /// rectangle. If the cursor is off-screen at release, just clears state.</summary>
+        private void CommitResidentialZoneSelection()
+        {
+            var sim = _bootstrap.Sim;
+            if (sim == null || _zoneSelStart is null) { ClearZoneSelection(); return; }
+            var world = MouseGroundPoint();
+            if (world is null) { ClearZoneSelection(); return; }
+            ComputeSelectionCells(_zoneSelStart.Value, world.Value, _zoneSelHighlightCells);
+            if (_zoneSelStart.Value.IsAdd)
+            {
+                foreach (var (eid, ac, pc, sd) in _zoneSelHighlightCells)
+                    sim.ZoneCorridorCellResidential(eid, ac, pc, sd);
             }
             else
             {
-                // Snap commit endpoint to the hovered cell's center too — matches how the
-                // highlight previews the selection.
-                var endWorld = SnapToHoveredCellCenter(world.Value);
-                ComputeSelectionCells(_zoneSelStart.Value.World, endWorld,
-                                      _zoneSelStart.Value.EdgeId, _zoneSelStart.Value.Side,
-                                      _zoneSelHighlightCells);
-                foreach (var (eid, ac, sd) in _zoneSelHighlightCells)
-                    sim.ZoneCorridorCellResidential(eid, ac, sd);
-                _zoneSelStart = null;
-                _zoneSelHighlightCells.Clear();
-                HideZoneSelHighlight();
+                foreach (var (eid, ac, pc, sd) in _zoneSelHighlightCells)
+                    sim.UnzoneCorridorCell(eid, ac, pc, sd);
             }
+            ClearZoneSelection();
         }
 
-        /// <summary>If the cursor (or any world point) sits inside a Voronoi-rendered
-        /// corridor cell, return that cell's center; otherwise return the raw point.
-        /// Used to snap both endpoints of the selection rectangle to cell centers.</summary>
-        private Vector2 SnapToHoveredCellCenter(Vector2 raw)
+        private void ClearZoneSelection()
         {
-            var sim = _bootstrap.Sim;
-            if (sim == null) return raw;
-            float stepSize = Mathf.Max(1f, GridSnapStep);
-            var cell = CorridorIndex.LocateCellAt(sim.State, raw.x, raw.y,
-                                                  stepSize, SimVisualizer.CorridorDepthCells);
-            if (cell is null) return raw;
-            if (!CorridorIndex.IsCellRendered(sim.State, cell.Value.EdgeId,
-                                              cell.Value.AlongCell, 0, cell.Value.Side, stepSize))
-                return raw;
-            var (cx, cy) = CorridorIndex.CellCenterWorld(sim.State, cell.Value.EdgeId,
-                cell.Value.AlongCell, 0, cell.Value.Side, stepSize);
-            return new Vector2(cx, cy);
+            _zoneSelStart = null;
+            _zoneSelHighlightCells.Clear();
+            HideZoneSelHighlight();
+            HideZoneSelRect();
         }
 
-        /// <summary>Walk every road edge and collect (edgeId, alongCell, side) tuples whose
-        /// cell center falls inside the AABB from <paramref name="startWorld"/> to
-        /// <paramref name="currentWorld"/>. Only includes Voronoi-rendered cells. On the
-        /// START edge, only the same side as the start cell is considered — otherwise the
-        /// AABB tends to sweep across the road and pick up the opposite-side cells. Other
-        /// edges allow both sides so corners / cross-street zoning still works.</summary>
-        private void ComputeSelectionCells(Vector2 startWorld, Vector2 currentWorld,
-                                           long startEdgeId, int startSide,
-                                           List<(long, int, int)> output)
+        /// <summary>Project a world point onto the start edge's road-local frame
+        /// (along, perp). Used to build the road-aligned AABB and to test cell membership.</summary>
+        private static (float along, float perp) ProjectToEdge(Vector2 p,
+                                                                float fx, float fy,
+                                                                float ddx, float ddy,
+                                                                float pdx, float pdy)
+        {
+            float ox = p.x - fx, oy = p.y - fy;
+            return (ox * ddx + oy * ddy, ox * pdx + oy * pdy);
+        }
+
+        private static Vector2 EdgeLocalToWorld(float fx, float fy,
+                                                float ddx, float ddy, float pdx, float pdy,
+                                                float along, float perp)
+            => new(fx + along * ddx + perp * pdx, fy + along * ddy + perp * pdy);
+
+        /// <summary>Compute the road-aligned AABB (in start-edge local frame) of the
+        /// selection from start to current. Caller uses the resulting (minA, maxA, minP, maxP)
+        /// to build the dashed quad's 4 world-space corners and to filter cells.</summary>
+        private bool TryComputeEdgeFrame(ZoneSelStart start, out float fx, out float fy,
+                                         out float ddx, out float ddy, out float pdx, out float pdy)
+        {
+            fx = fy = ddx = ddy = pdx = pdy = 0f;
+            var sim = _bootstrap.Sim;
+            if (sim == null) return false;
+            if (!sim.State.RoadEdges.TryGetValue(start.EdgeId, out var edge)) return false;
+            if (!sim.State.RoadNodes.TryGetValue(edge.FromNodeId, out var fn)) return false;
+            if (!sim.State.RoadNodes.TryGetValue(edge.ToNodeId, out var tn)) return false;
+            fx = fn.Position.X; fy = fn.Position.Y;
+            float dx = tn.Position.X - fx, dy = tn.Position.Y - fy;
+            float len = Mathf.Sqrt(dx * dx + dy * dy);
+            if (len < 1e-4f) return false;
+            ddx = dx / len; ddy = dy / len;
+            pdx = -ddy; pdy = ddx;
+            return true;
+        }
+
+        /// <summary>Collect cells whose center projects into the start-edge-local AABB
+        /// formed by the start cell center and the current cursor. Iterates EVERY perp row
+        /// (not just front) so the user can zone deeper cells too — only PerpCell=0 cells
+        /// drive auto-spawn, but all selected cells get zoned and visually persist.</summary>
+        private void ComputeSelectionCells(ZoneSelStart start, Vector2 currentWorld,
+                                           List<(long, int, int, int)> output)
         {
             output.Clear();
             var sim = _bootstrap.Sim;
             if (sim == null) return;
+            if (!TryComputeEdgeFrame(start, out var sfx, out var sfy,
+                                     out var ddx, out var ddy, out var pdx, out var pdy))
+                return;
             float stepSize = Mathf.Max(1f, GridSnapStep);
-            float minX = Mathf.Min(startWorld.x, currentWorld.x);
-            float maxX = Mathf.Max(startWorld.x, currentWorld.x);
-            float minY = Mathf.Min(startWorld.y, currentWorld.y);
-            float maxY = Mathf.Max(startWorld.y, currentWorld.y);
+            int maxPerpCell = SimVisualizer.CorridorDepthCells;
+
+            var (a0, p0) = ProjectToEdge(start.World, sfx, sfy, ddx, ddy, pdx, pdy);
+            var (a1, p1) = ProjectToEdge(currentWorld, sfx, sfy, ddx, ddy, pdx, pdy);
+            float minA = Mathf.Min(a0, a1), maxA = Mathf.Max(a0, a1);
+            float minP = Mathf.Min(p0, p1), maxP = Mathf.Max(p0, p1);
 
             foreach (var e in sim.State.RoadEdges.Values)
             {
+                if (e.ControlPoint.HasValue) continue;  // v1: curves don't host zonable cells
                 if (!sim.State.RoadNodes.TryGetValue(e.FromNodeId, out var fn)) continue;
                 if (!sim.State.RoadNodes.TryGetValue(e.ToNodeId, out var tn)) continue;
                 float dx = tn.Position.X - fn.Position.X;
                 float dy = tn.Position.Y - fn.Position.Y;
                 float len = Mathf.Sqrt(dx * dx + dy * dy);
                 if (len < 1e-4f) continue;
-                float ddx = dx / len, ddy = dy / len;
-                float pdx = -ddy, pdy = ddx;
+                float eddx = dx / len, eddy = dy / len;
+                float epdx = -eddy, epdy = eddx;
                 float setback = e.WidthTiles * 0.5f;
                 int cellsAlong = Mathf.CeilToInt(len / stepSize);
 
                 for (int side = -1; side <= 1; side += 2)
                 {
-                    if (e.Id == startEdgeId && side != startSide) continue;
-                    float perpCenter = side * (setback + 0.5f * stepSize);
-                    for (int a = 0; a < cellsAlong; a++)
+                    for (int perpCell = 0; perpCell < maxPerpCell; perpCell++)
                     {
-                        float alongCenter = (a + 0.5f) * stepSize;
-                        if (alongCenter > len) continue;
-                        float cx = fn.Position.X + alongCenter * ddx + perpCenter * pdx;
-                        float cy = fn.Position.Y + alongCenter * ddy + perpCenter * pdy;
-                        if (cx < minX || cx > maxX || cy < minY || cy > maxY) continue;
-                        if (!CorridorIndex.IsCellRendered(sim.State, e.Id, a, 0, side, stepSize))
-                            continue;
-                        output.Add((e.Id, a, side));
+                        float perpCenter = side * (setback + (perpCell + 0.5f) * stepSize);
+                        for (int a = 0; a < cellsAlong; a++)
+                        {
+                            float alongCenter = (a + 0.5f) * stepSize;
+                            if (alongCenter > len) continue;
+                            float cellX = fn.Position.X + alongCenter * eddx + perpCenter * epdx;
+                            float cellY = fn.Position.Y + alongCenter * eddy + perpCenter * epdy;
+                            var (ca, cp) = ProjectToEdge(new Vector2(cellX, cellY),
+                                                          sfx, sfy, ddx, ddy, pdx, pdy);
+                            if (ca < minA || ca > maxA || cp < minP || cp > maxP) continue;
+                            if (!CorridorIndex.IsCellRendered(sim.State, e.Id, a, perpCell, side, stepSize))
+                                continue;
+                            // In remove mode, only show cells that are currently zoned —
+                            // selecting empty cells doesn't preview as a no-op.
+                            if (!start.IsAdd
+                                && !sim.State.City.ZonedResidentialCells.Contains((e.Id, a, perpCell, side)))
+                                continue;
+                            output.Add((e.Id, a, perpCell, side));
+                        }
                     }
                 }
             }
@@ -761,10 +918,68 @@ namespace AgentSimUnity
             if (_zoneSelHighlightGO != null) _zoneSelHighlightGO.SetActive(false);
         }
 
+        private void HideZoneSelRect()
+        {
+            if (_zoneSelRectGO != null) _zoneSelRectGO.SetActive(false);
+        }
+
+        /// <summary>Update the dashed-rectangle marquee. Computed in start-edge local
+        /// coords so the rect is rotated to match the road, then the 4 corners are
+        /// converted back to world coords for the mesh.</summary>
+        private void UpdateZoneSelRect(ZoneSelStart start, Vector2 currentWorld)
+        {
+            if (!TryComputeEdgeFrame(start, out var sfx, out var sfy,
+                                     out var ddx, out var ddy, out var pdx, out var pdy))
+            { HideZoneSelRect(); return; }
+
+            var (a0, p0) = ProjectToEdge(start.World, sfx, sfy, ddx, ddy, pdx, pdy);
+            var (a1, p1) = ProjectToEdge(currentWorld, sfx, sfy, ddx, ddy, pdx, pdy);
+            float minA = Mathf.Min(a0, a1), maxA = Mathf.Max(a0, a1);
+            float minP = Mathf.Min(p0, p1), maxP = Mathf.Max(p0, p1);
+
+            var c0 = EdgeLocalToWorld(sfx, sfy, ddx, ddy, pdx, pdy, minA, minP);
+            var c1 = EdgeLocalToWorld(sfx, sfy, ddx, ddy, pdx, pdy, maxA, minP);
+            var c2 = EdgeLocalToWorld(sfx, sfy, ddx, ddy, pdx, pdy, maxA, maxP);
+            var c3 = EdgeLocalToWorld(sfx, sfy, ddx, ddy, pdx, pdy, minA, maxP);
+
+            if (_zoneSelRectMesh == null)
+            {
+                _zoneSelRectMesh = new Mesh { name = "ZoneSelRect" };
+                _zoneSelRectMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            }
+            if (_zoneSelRectGO == null)
+            {
+                _zoneSelRectGO = new GameObject("ZoneSelRect");
+                var gridT = _visualizer.Grid != null ? _visualizer.Grid.transform : transform;
+                _zoneSelRectGO.transform.SetParent(gridT, worldPositionStays: false);
+                var mf = _zoneSelRectGO.AddComponent<MeshFilter>();
+                mf.sharedMesh = _zoneSelRectMesh;
+                var mr = _zoneSelRectGO.AddComponent<MeshRenderer>();
+                if (_houseGhostMaterial == null)
+                    _houseGhostMaterial = new Material(Shader.Find("Sprites/Default"));
+                mr.sharedMaterial = _houseGhostMaterial;
+                mr.receiveShadows = false;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+            _zoneSelRectGO.SetActive(true);
+
+            float stepSize = Mathf.Max(1f, GridSnapStep);
+            float dashLen = stepSize * 0.6f;
+            float gapLen  = stepSize * 0.4f;
+            float lineW   = stepSize * 0.08f;
+            Color rectCol = start.IsAdd
+                ? ZoneCellHoverColor
+                : new Color(ZoneSelRemoveColor.r, ZoneSelRemoveColor.g, ZoneSelRemoveColor.b, 0.9f);
+            ProceduralMesh.BuildDashedQuad(c0, c1, c2, c3,
+                                            dashLen, gapLen, lineW,
+                                            rectCol,
+                                            reuseMesh: _zoneSelRectMesh);
+        }
+
         /// <summary>Update the filled-cell highlight mesh for the in-progress marquee.
         /// Lazy-creates the GO + mesh, parented under SimGrid so the corridor's local-XY
         /// coordinates map onto the world ground plane via the +90° X rotation.</summary>
-        private void UpdateZoneSelHighlight(Vector2 startWorld, Vector2 currentWorld)
+        private void UpdateZoneSelHighlight(Vector2 currentWorld)
         {
             var sim = _bootstrap.Sim;
             if (sim == null) return;
@@ -790,9 +1005,7 @@ namespace AgentSimUnity
             }
             _zoneSelHighlightGO.SetActive(true);
 
-            ComputeSelectionCells(startWorld, currentWorld,
-                                  _zoneSelStart!.Value.EdgeId, _zoneSelStart.Value.Side,
-                                  _zoneSelHighlightCells);
+            ComputeSelectionCells(_zoneSelStart!.Value, currentWorld, _zoneSelHighlightCells);
             float stepSize = Mathf.Max(1f, GridSnapStep);
             ProceduralMesh.BuildMultiEdgeCellsOverlay(
                 _zoneSelHighlightCells,
@@ -804,7 +1017,7 @@ namespace AgentSimUnity
                     return (fn.Position.X, fn.Position.Y, tn.Position.X, tn.Position.Y, e.WidthTiles * 0.5f);
                 },
                 stepSize,
-                ZoneSelHighlightColor,
+                _zoneSelStart.Value.IsAdd ? ZoneSelHighlightColor : ZoneSelRemoveColor,
                 reuseMesh: _zoneSelHighlightMesh);
         }
 
@@ -906,6 +1119,460 @@ namespace AgentSimUnity
         ///      or existing edge) and AngleConstraintEnabled
         ///   3. Grid snap (default-on; Alt inverts)
         ///   4. Per-axis alignment to existing nodes (AlignmentGuidesEnabled)</summary>
+        /// <summary>3-click flow for curved roads. Click 1 must hit an existing node (we
+        /// need the attached edge as a tangent reference in future iterations). Click 2 is
+        /// the free 2D control point. Click 3 is the end (snaps to existing node if close,
+        /// otherwise creates a new one).</summary>
+        private void HandleCurvedRoadClick()
+        {
+            var world = MouseGroundPoint();
+            if (world is null) return;
+            var sim = _bootstrap.Sim;
+            if (sim == null) return;
+
+            if (_curveP0 is null)
+            {
+                var nodeId = FindSnappedNodeId(world.Value);
+                if (nodeId is null) return;  // click 1 requires an existing node
+                var n = sim.State.RoadNodes[nodeId.Value];
+                _curveP0 = new Vector2(n.Position.X, n.Position.Y);
+                _curveStartNodeId = nodeId;
+            }
+            else if (_curveP1 is null)
+            {
+                _curveP1 = SnapCurveCursor(world.Value, isClick2: true);
+            }
+            else
+            {
+                var endSnapped = SnapCurveCursor(world.Value, isClick2: false);
+                try
+                {
+                    sim.PlaceCurvedRoad(
+                        new Point2(_curveP0.Value.x, _curveP0.Value.y),
+                        new Point2(_curveP1.Value.x, _curveP1.Value.y),
+                        new Point2(endSnapped.x, endSnapped.y));
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Placement] curved road failed: {e.Message}");
+                }
+                _curveP0 = null;
+                _curveP1 = null;
+                _curveStartNodeId = null;
+                HideCurvePreview();
+                HideCurveExtensions();
+                HideCurveAlignment();
+            }
+        }
+
+        /// <summary>Snap stack for curve clicks 2 and 3. Precedence (highest first):
+        /// (0) intersection of any two extension rays in range — locks the cursor in 2D
+        /// when two guide lines cross near it; (1) click-1 node's extension ray (click 2
+        /// only — tangent continuity); (2) any OTHER node's edge-extension ray;
+        /// (3) snap-to-existing-node; (4) world-grid snap when GridSnapEnabled.</summary>
+        private Vector2 SnapCurveCursor(Vector2 raw, bool isClick2)
+        {
+            bool altHeld = Keyboard.current is not null && Keyboard.current.altKey.isPressed;
+            bool effectiveGridSnap = GridSnapEnabled ^ altHeld;
+
+            var (intsect, found) = TrySnapToExtensionIntersection(raw);
+            if (found) return intsect;
+
+            if (isClick2)
+            {
+                var ext = SnapToExtensionRay(raw);
+                if (ext != raw) return ext;
+            }
+            var (otherExt, _) = FindNearestOtherNodeExtension(raw);
+            if (otherExt != raw) return otherExt;
+            var node = SnapToExistingNode(raw);
+            if (node != raw) return node;
+            if (effectiveGridSnap) return SnapToStep(raw, GridSnapStep);
+            return raw;
+        }
+
+        /// <summary>Compute every extension ray for every node, look for pairwise
+        /// intersections that lie on both rays' forward sides, and return the closest
+        /// intersection to the cursor if it's within ExtensionSnapRadiusTiles.</summary>
+        private (Vector2 snapped, bool found) TrySnapToExtensionIntersection(Vector2 cursor)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim == null) return (cursor, false);
+
+            var rays = new List<(Vector2 a, Vector2 d)>();
+            foreach (var n in sim.State.RoadNodes.Values)
+                rays.AddRange(ComputeExtensionRaysForNode(n.Id));
+            if (rays.Count < 2) return (cursor, false);
+
+            // Intersection only wins over single-ray snap when the cursor is meaningfully
+            // closer to the intersection point than to either individual ray. Using a
+            // tighter radius avoids the "yanked to intersection" feeling described in the
+            // post-mortem.
+            float intersectionRadius = ExtensionSnapRadiusTiles * 0.5f;
+            Vector2 best = cursor;
+            float bestDist = intersectionRadius;
+            bool found = false;
+            for (int i = 0; i < rays.Count; i++)
+            {
+                for (int j = i + 1; j < rays.Count; j++)
+                {
+                    // Skip same-origin pairs (both rays from one node trivially "intersect"
+                    // at that node, which would pull the cursor back to the node).
+                    if (Vector2.Distance(rays[i].a, rays[j].a) < 1e-3f) continue;
+                    // Skip near-parallel pairs — their intersection moves wildly with small
+                    // cursor motion and the snap feels unstable. |dot| > 0.995 ≈ < ~5.7°.
+                    if (Mathf.Abs(Vector2.Dot(rays[i].d, rays[j].d)) > 0.995f) continue;
+                    if (!TryRayIntersect(rays[i].a, rays[i].d, rays[j].a, rays[j].d, out var ipt))
+                        continue;
+                    float dist = Vector2.Distance(cursor, ipt);
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        best = ipt;
+                        found = true;
+                    }
+                }
+            }
+            return (best, found);
+        }
+
+        /// <summary>Intersect two rays (origin + dir). Returns true with the intersection
+        /// when both parametric scalars are non-negative (cursor is on the forward side
+        /// of each ray); false when parallel or the intersection is behind either origin.</summary>
+        private static bool TryRayIntersect(Vector2 a1, Vector2 d1, Vector2 a2, Vector2 d2,
+                                            out Vector2 intersection)
+        {
+            intersection = Vector2.zero;
+            float det = d2.x * d1.y - d1.x * d2.y;
+            if (Mathf.Abs(det) < 1e-6f) return false;
+            Vector2 diff = a2 - a1;
+            float t = (d2.x * diff.y - d2.y * diff.x) / det;
+            float s = (d1.x * diff.y - d1.y * diff.x) / det;
+            if (t < 0 || s < 0) return false;
+            intersection = a1 + d1 * t;
+            return true;
+        }
+
+        /// <summary>Extension rays at <paramref name="nodeId"/>: one per attached edge,
+        /// each starting at the node and pointing AWAY from the edge's other endpoint
+        /// (so the ray visually continues the edge through the node and out the other side).</summary>
+        private List<(Vector2 from, Vector2 dir)> ComputeExtensionRaysForNode(long nodeId)
+        {
+            var result = new List<(Vector2, Vector2)>();
+            var sim = _bootstrap.Sim;
+            if (sim == null) return result;
+            if (!sim.State.RoadNodes.TryGetValue(nodeId, out var n)) return result;
+            Vector2 a = new(n.Position.X, n.Position.Y);
+            foreach (var e in sim.State.RoadEdges.Values)
+            {
+                long otherId;
+                if (e.FromNodeId == n.Id) otherId = e.ToNodeId;
+                else if (e.ToNodeId == n.Id) otherId = e.FromNodeId;
+                else continue;
+                if (!sim.State.RoadNodes.TryGetValue(otherId, out var o)) continue;
+                Vector2 b = new(o.Position.X, o.Position.Y);
+                Vector2 d = a - b;
+                float len = d.magnitude;
+                if (len < 1e-4f) continue;
+                result.Add((a, d / len));
+            }
+            return result;
+        }
+
+        private List<(Vector2 from, Vector2 dir)> ComputeExtensionRays()
+            => _curveStartNodeId is null
+                ? new List<(Vector2, Vector2)>()
+                : ComputeExtensionRaysForNode(_curveStartNodeId.Value);
+
+        /// <summary>Scan every other node's extension rays. Return the (snapped position,
+        /// owning node id) for the ray whose perpendicular distance to the cursor is
+        /// smallest — provided it's within ExtensionSnapRadiusTiles and the cursor lies
+        /// on the forward side of the ray. Null nodeId = no snap.</summary>
+        private (Vector2 snapped, long? activeNodeId) FindNearestOtherNodeExtension(Vector2 raw)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim == null) return (raw, null);
+            Vector2 best = raw;
+            float bestDist = ExtensionSnapRadiusTiles;
+            long? bestNodeId = null;
+            foreach (var n in sim.State.RoadNodes.Values)
+            {
+                if (n.Id == _curveStartNodeId) continue;  // already covered by SnapToExtensionRay
+                foreach (var (a, d) in ComputeExtensionRaysForNode(n.Id))
+                {
+                    float t = Vector2.Dot(raw - a, d);
+                    if (t <= 0) continue;
+                    Vector2 proj = a + d * t;
+                    float dist = Vector2.Distance(raw, proj);
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        best = proj;
+                        bestNodeId = n.Id;
+                    }
+                }
+            }
+            return (best, bestNodeId);
+        }
+
+        private Vector2 SnapToExistingNode(Vector2 raw)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim is null) return raw;
+            float bestSq = Sim.NodeSnapRadiusTiles * Sim.NodeSnapRadiusTiles;
+            Point2? best = null;
+            foreach (var node in sim.State.RoadNodes.Values)
+            {
+                float dx = node.Position.X - raw.x;
+                float dy = node.Position.Y - raw.y;
+                float dsq = dx * dx + dy * dy;
+                if (dsq <= bestSq) { bestSq = dsq; best = node.Position; }
+            }
+            return best.HasValue ? new Vector2(best.Value.X, best.Value.Y) : raw;
+        }
+
+        /// <summary>If <paramref name="cur"/> is within ExtensionSnapRadiusTiles of any
+        /// extension ray, return the projection onto that ray. Otherwise return cur.</summary>
+        private Vector2 SnapToExtensionRay(Vector2 cur)
+        {
+            var rays = ComputeExtensionRays();
+            Vector2 best = cur;
+            float bestDist = ExtensionSnapRadiusTiles;
+            foreach (var (a, dir) in rays)
+            {
+                float t = Vector2.Dot(cur - a, dir);
+                if (t <= 0) continue;  // behind the node — would re-enter the existing edge
+                Vector2 proj = a + dir * t;
+                float dist = Vector2.Distance(cur, proj);
+                if (dist < bestDist) { bestDist = dist; best = proj; }
+            }
+            return best;
+        }
+
+        private void HideCurveExtensions()
+        {
+            if (_curveExtensionsGO != null) _curveExtensionsGO.SetActive(false);
+        }
+
+        private void HideCurveAlignment()
+        {
+            if (_curveAlignmentGO != null) _curveAlignmentGO.SetActive(false);
+        }
+
+        private void HideCurveGhostNode()
+        {
+            if (_curveGhostNode != null) _curveGhostNode.SetActive(false);
+        }
+
+        /// <summary>Show a translucent disc at the snapped cursor (where the next click
+        /// would land). Hidden when the cursor is already coincident with an existing
+        /// node — that node will be highlighted via its own hover state instead.</summary>
+        private void UpdateCurveGhostNode(Vector2 snappedCursor)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim is null) { HideCurveGhostNode(); return; }
+            float sq = (float)(Sim.NodeSnapRadiusTiles * Sim.NodeSnapRadiusTiles * 0.5f);
+            foreach (var n in sim.State.RoadNodes.Values)
+            {
+                float dx = n.Position.X - snappedCursor.x;
+                float dy = n.Position.Y - snappedCursor.y;
+                if (dx * dx + dy * dy <= sq) { HideCurveGhostNode(); return; }
+            }
+            if (_curveGhostNode == null)
+            {
+                _curveGhostNode = new GameObject("CurveGhostNode");
+                var gridT = _visualizer.Grid != null ? _visualizer.Grid.transform : transform;
+                _curveGhostNode.transform.SetParent(gridT, worldPositionStays: false);
+                var mf = _curveGhostNode.AddComponent<MeshFilter>();
+                mf.sharedMesh = _visualizer.NodeMesh;
+                var mr = _curveGhostNode.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = _visualizer.GhostNodeMaterial;
+                mr.receiveShadows = false;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+            _curveGhostNode.SetActive(true);
+            _curveGhostNode.transform.localPosition =
+                new Vector3(snappedCursor.x, snappedCursor.y, -0.12f);
+        }
+
+        /// <summary>Render the extension rays of the "active" node — the one whose own
+        /// extension ray the cursor is currently closest to. Cursor snap math (in
+        /// SnapCurveCursor) is what defines "active"; here we just visualize that node's
+        /// rays so the user can see what they're aligning against.</summary>
+        private void UpdateCurveAlignment(Vector2 cursor)
+        {
+            var (_, activeNodeId) = FindNearestOtherNodeExtension(cursor);
+            if (activeNodeId is null) { HideCurveAlignment(); return; }
+
+            var rays = ComputeExtensionRaysForNode(activeNodeId.Value);
+            if (rays.Count == 0) { HideCurveAlignment(); return; }
+
+            var lines = new List<(Vector2 from, Vector2 to)>(rays.Count);
+            foreach (var (a, dir) in rays)
+                lines.Add((a, a + dir * ExtensionLineLengthTiles));
+
+            if (_curveAlignmentMesh == null)
+            {
+                _curveAlignmentMesh = new Mesh { name = "CurveAlignment" };
+                _curveAlignmentMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            }
+            if (_curveAlignmentGO == null)
+            {
+                _curveAlignmentGO = new GameObject("CurveAlignment");
+                var gridT = _visualizer.Grid != null ? _visualizer.Grid.transform : transform;
+                _curveAlignmentGO.transform.SetParent(gridT, worldPositionStays: false);
+                var mf = _curveAlignmentGO.AddComponent<MeshFilter>();
+                mf.sharedMesh = _curveAlignmentMesh;
+                var mr = _curveAlignmentGO.AddComponent<MeshRenderer>();
+                if (_houseGhostMaterial == null)
+                    _houseGhostMaterial = new Material(Shader.Find("Sprites/Default"));
+                mr.sharedMaterial = _houseGhostMaterial;
+                mr.receiveShadows = false;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+            _curveAlignmentGO.SetActive(true);
+
+            float stepSize = Mathf.Max(1f, GridSnapStep);
+            ProceduralMesh.BuildDashedLines(
+                lines,
+                dashLen: stepSize * 0.5f,
+                gapLen:  stepSize * 0.5f,
+                lineWidth: stepSize * 0.06f,
+                color: CurveGuideColor,
+                reuseMesh: _curveAlignmentMesh);
+        }
+
+        private void UpdateCurveExtensions(Vector2 snappedCursor)
+        {
+            if (_curveStartNodeId is null) { HideCurveExtensions(); return; }
+            var rays = ComputeExtensionRays();
+
+            var lines = new List<(Vector2 from, Vector2 to)>(rays.Count + 1);
+            foreach (var (a, dir) in rays)
+                lines.Add((a, a + dir * ExtensionLineLengthTiles));
+
+            // State 2 only: also draw a guide line from the control point (P1) to the
+            // cursor, since that segment IS the tangent at click 3. Suppress when the
+            // cursor is snapping to an existing node — that node would supply its own
+            // tangent reference (not implemented yet, but the line is misleading either way).
+            if (_curveP1.HasValue && FindSnappedNodeId(snappedCursor) is null)
+                lines.Add((_curveP1.Value, snappedCursor));
+
+            if (lines.Count == 0) { HideCurveExtensions(); return; }
+
+            if (_curveExtensionsMesh == null)
+            {
+                _curveExtensionsMesh = new Mesh { name = "CurveExtensions" };
+                _curveExtensionsMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            }
+            if (_curveExtensionsGO == null)
+            {
+                _curveExtensionsGO = new GameObject("CurveExtensions");
+                var gridT = _visualizer.Grid != null ? _visualizer.Grid.transform : transform;
+                _curveExtensionsGO.transform.SetParent(gridT, worldPositionStays: false);
+                var mf = _curveExtensionsGO.AddComponent<MeshFilter>();
+                mf.sharedMesh = _curveExtensionsMesh;
+                var mr = _curveExtensionsGO.AddComponent<MeshRenderer>();
+                if (_houseGhostMaterial == null)
+                    _houseGhostMaterial = new Material(Shader.Find("Sprites/Default"));
+                mr.sharedMaterial = _houseGhostMaterial;
+                mr.receiveShadows = false;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+            _curveExtensionsGO.SetActive(true);
+
+            float stepSize = Mathf.Max(1f, GridSnapStep);
+            ProceduralMesh.BuildDashedLines(
+                lines,
+                dashLen: stepSize * 0.5f,
+                gapLen:  stepSize * 0.5f,
+                lineWidth: stepSize * 0.06f,
+                color: CurveGuideColor,
+                reuseMesh: _curveExtensionsMesh);
+        }
+
+        private long? FindSnappedNodeId(Vector2 p)
+        {
+            var sim = _bootstrap.Sim;
+            if (sim is null) return null;
+            float bestSq = Sim.NodeSnapRadiusTiles * Sim.NodeSnapRadiusTiles;
+            long? best = null;
+            foreach (var n in sim.State.RoadNodes.Values)
+            {
+                float dx = n.Position.X - p.x;
+                float dy = n.Position.Y - p.y;
+                float dsq = dx * dx + dy * dy;
+                if (dsq <= bestSq) { bestSq = dsq; best = n.Id; }
+            }
+            return best;
+        }
+
+        private void HideCurvePreview()
+        {
+            if (_curvePreview != null) _curvePreview.gameObject.SetActive(false);
+        }
+
+        /// <summary>Update the in-progress curve preview. State 0 = no preview; state 1
+        /// (P0 set) = line from P0 to cursor; state 2 (P0 + P1 set) = quadratic Bezier
+        /// from P0 through P1 to cursor.</summary>
+        private void UpdateCurvePreview()
+        {
+            if (_curveP0 is null) { HideCurvePreview(); HideCurveExtensions(); HideCurveAlignment(); HideCurveGhostNode(); return; }
+            var raw = MouseGroundPoint();
+            if (raw is null) { HideCurvePreview(); HideCurveExtensions(); HideCurveAlignment(); HideCurveGhostNode(); return; }
+            // The preview tracks the FINAL snap position so what you see is what you'd commit.
+            bool isClick2 = _curveP1 is null;
+            var cur = SnapCurveCursor(raw.Value, isClick2);
+            UpdateCurveAlignment(cur);
+            UpdateCurveGhostNode(cur);
+
+            if (_curvePreview == null)
+            {
+                var go = new GameObject("CurvePreview");
+                var gridT = _visualizer.Grid != null ? _visualizer.Grid.transform : transform;
+                go.transform.SetParent(gridT, worldPositionStays: false);
+                _curvePreview = go.AddComponent<LineRenderer>();
+                if (_houseGhostMaterial == null)
+                    _houseGhostMaterial = new Material(Shader.Find("Sprites/Default"));
+                _curvePreview.material = _houseGhostMaterial;
+                _curvePreview.useWorldSpace = false;
+                _curvePreview.startWidth = 0.5f;
+                _curvePreview.endWidth = 0.5f;
+                _curvePreview.numCapVertices = 2;
+                _curvePreview.startColor = CurveGuideColor;
+                _curvePreview.endColor = CurveGuideColor;
+                _curvePreview.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                _curvePreview.receiveShadows = false;
+            }
+            _curvePreview.gameObject.SetActive(true);
+
+            UpdateCurveExtensions(cur);
+            if (_curveP1 is null)
+            {
+                // State 1: straight line from P0 to snapped cursor.
+                _curvePreview.positionCount = 2;
+                _curvePreview.SetPosition(0, new Vector3(_curveP0.Value.x, _curveP0.Value.y, -0.06f));
+                _curvePreview.SetPosition(1, new Vector3(cur.x,             cur.y,             -0.06f));
+            }
+            else
+            {
+                // State 2: full Bezier preview, cursor = prospective end point.
+                const int samples = 24;
+                _curvePreview.positionCount = samples;
+                float x0 = _curveP0.Value.x, y0 = _curveP0.Value.y;
+                float x1 = _curveP1.Value.x, y1 = _curveP1.Value.y;
+                float x2 = cur.x,            y2 = cur.y;
+                for (int i = 0; i < samples; i++)
+                {
+                    float t = i / (float)(samples - 1);
+                    float u = 1f - t;
+                    float bx = u * u * x0 + 2f * u * t * x1 + t * t * x2;
+                    float by = u * u * y0 + 2f * u * t * y1 + t * t * y2;
+                    _curvePreview.SetPosition(i, new Vector3(bx, by, -0.06f));
+                }
+            }
+        }
+
         private void HandleRoadDrag()
         {
             var world = MouseGroundPoint();
@@ -1288,6 +1955,7 @@ namespace AgentSimUnity
 
             GUILayout.Space(10);
             RoadButton();
+            CurvedRoadButton();
             ConnectButton();
             DemolishButton();
 
@@ -1350,6 +2018,25 @@ namespace AgentSimUnity
             GUI.backgroundColor = bg;
         }
 
+        private void CurvedRoadButton()
+        {
+            bool active = _mode == Mode.PlaceCurvedRoad;
+            var bg = GUI.backgroundColor;
+            GUI.backgroundColor = active ? Color.green : new Color(0.20f, 0.55f, 0.30f, 1f);
+            if (GUILayout.Button("CURVE"))
+            {
+                _mode = Mode.PlaceCurvedRoad;
+                _curveP0 = null;
+                _curveP1 = null;
+                _curveStartNodeId = null;
+                HideCurvePreview();
+                HideCurveExtensions();
+                HideCurveAlignment();
+                HideCurveGhostNode();
+            }
+            GUI.backgroundColor = bg;
+        }
+
         private void ConnectButton()
         {
             bool active = _mode == Mode.Connect;
@@ -1398,9 +2085,9 @@ namespace AgentSimUnity
                 Mode.PaintZone when _pendingZoneSector.HasValue =>
                     $"Painting: {_pendingZoneType} [{_pendingZoneSector}]  (drag rectangle, Esc to cancel)",
                 Mode.PaintZone when _pendingZoneType == ZoneType.Residential && _zoneSelStart.HasValue =>
-                    $"Zoning Residential: click again to commit selection  (Esc to cancel)",
+                    $"Zoning Residential: drag to size selection, release to commit  (Esc to cancel)",
                 Mode.PaintZone when _pendingZoneType == ZoneType.Residential =>
-                    $"Zoning Residential: click a corridor cell to start, click again to commit  (Esc to cancel)",
+                    $"Zoning Residential: click + drag on a corridor cell to select  (Esc to cancel)",
                 Mode.PaintZone => $"Painting: {_pendingZoneType}  (drag rectangle, Esc to cancel)",
                 Mode.Demolish => "DEMOLISH: click a structure to remove it  (Esc to cancel)",
                 Mode.Connect => _connectSourceId.HasValue
@@ -1409,6 +2096,12 @@ namespace AgentSimUnity
                 Mode.PlaceRoad => _roadDragStart.HasValue
                     ? "ROAD: release left mouse to commit segment  (Esc to cancel)"
                     : "ROAD: click + drag to draw a road segment  (Esc to cancel)",
+                Mode.PlaceCurvedRoad when _curveP0 is null =>
+                    "CURVED ROAD: click an existing node to start  (Esc to cancel)",
+                Mode.PlaceCurvedRoad when _curveP1 is null =>
+                    "CURVED ROAD: click to place the control point  (Esc to cancel)",
+                Mode.PlaceCurvedRoad =>
+                    "CURVED ROAD: click to place the end point  (Esc to cancel)",
                 _ => "",
             };
             // Sit just below the UI Toolkit top bar (height 56).
@@ -1420,12 +2113,17 @@ namespace AgentSimUnity
         {
             _mode = Mode.Inspect;
             _zoneDragStart = null;
-            _zoneSelStart = null;
-            _zoneSelHighlightCells.Clear();
-            HideZoneSelHighlight();
+            ClearZoneSelection();
             _connectSourceId = null;
             _roadDragStart = null;
             _roadDragCurrent = null;
+            _curveP0 = null;
+            _curveP1 = null;
+            _curveStartNodeId = null;
+            HideCurvePreview();
+            HideCurveExtensions();
+            HideCurveAlignment();
+            HideCurveGhostNode();
             ClearGhost();
         }
 

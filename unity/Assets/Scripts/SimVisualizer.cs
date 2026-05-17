@@ -58,6 +58,7 @@ namespace AgentSimUnity
         private int _lastRoadEdgeCount = -1;
         private int _lastRoadNodeCount = -1;
         private Mesh _nodeMesh = null!;
+        public Mesh NodeMesh => _nodeMesh;
         private static readonly Color RoadEdgeColor = new(0.65f, 0.65f, 0.70f, 1f);
         private static readonly Color RoadNodeColor = new(0.95f, 0.55f, 0.30f, 1f);
         private static readonly Color RoadNodeHoverColor = new(1.00f, 0.85f, 0.40f, 1f);
@@ -73,6 +74,7 @@ namespace AgentSimUnity
         private GameObject? _ghostStartNode;
         private GameObject? _ghostEndNode;
         private Material _ghostNodeMaterial = null!;
+        public Material GhostNodeMaterial => _ghostNodeMaterial;
         private static readonly Color RoadGhostNodeColor = new(0.95f, 0.90f, 0.45f, 0.7f);
 
         // Road-edge corridors: faint translucent rectangles showing the buildable strip
@@ -792,7 +794,11 @@ namespace AgentSimUnity
                 }
 
                 bool shiftHeld = Keyboard.current is not null && Keyboard.current.shiftKey.isPressed;
-                bool panDragging = Mouse.current.rightButton.isPressed
+                // Suppress right-button pan when the placement tool has claimed it for the
+                // residential zone-remove drag — middle-button-shift still pans in that case.
+                var pcPan = GetComponent<PlacementController>();
+                bool rightPanAllowed = pcPan == null || !pcPan.RightClickReservedForZoning;
+                bool panDragging = (Mouse.current.rightButton.isPressed && rightPanAllowed)
                                    || (Mouse.current.middleButton.isPressed && shiftHeld);
                 bool orbitDragging = Mouse.current.middleButton.isPressed && !shiftHeld;
 
@@ -1138,8 +1144,30 @@ namespace AgentSimUnity
                 if (!_roadEdgeRenderers.TryGetValue(edge.Id, out var lr)) continue;
                 if (!state.RoadNodes.TryGetValue(edge.FromNodeId, out var fromN)) continue;
                 if (!state.RoadNodes.TryGetValue(edge.ToNodeId, out var toN)) continue;
-                lr.SetPosition(0, new Vector3(fromN.Position.X, fromN.Position.Y, -0.05f));
-                lr.SetPosition(1, new Vector3(toN.Position.X, toN.Position.Y, -0.05f));
+                if (edge.ControlPoint is Point2 cp)
+                {
+                    // Quadratic Bezier: 24 sample points. Cheap visual approximation; the
+                    // underlying RoadEdge is still a single graph edge.
+                    const int samples = 24;
+                    if (lr.positionCount != samples) lr.positionCount = samples;
+                    float x0 = fromN.Position.X, y0 = fromN.Position.Y;
+                    float x1 = cp.X, y1 = cp.Y;
+                    float x2 = toN.Position.X, y2 = toN.Position.Y;
+                    for (int i = 0; i < samples; i++)
+                    {
+                        float t = i / (float)(samples - 1);
+                        float u = 1f - t;
+                        float bx = u * u * x0 + 2f * u * t * x1 + t * t * x2;
+                        float by = u * u * y0 + 2f * u * t * y1 + t * t * y2;
+                        lr.SetPosition(i, new Vector3(bx, by, -0.05f));
+                    }
+                }
+                else
+                {
+                    if (lr.positionCount != 2) lr.positionCount = 2;
+                    lr.SetPosition(0, new Vector3(fromN.Position.X, fromN.Position.Y, -0.05f));
+                    lr.SetPosition(1, new Vector3(toN.Position.X, toN.Position.Y, -0.05f));
+                }
             }
         }
 
@@ -1164,6 +1192,7 @@ namespace AgentSimUnity
             var edgeIds = new List<long>(state.RoadEdges.Count);
             foreach (var e in state.RoadEdges.Values)
             {
+                if (e.ControlPoint.HasValue) continue;  // v1: no corridor for curved edges
                 if (!state.RoadNodes.TryGetValue(e.FromNodeId, out var f)) continue;
                 if (!state.RoadNodes.TryGetValue(e.ToNodeId, out var t)) continue;
                 allTuples.Add((f.Position.X, f.Position.Y, t.Position.X, t.Position.Y));
@@ -1230,15 +1259,15 @@ namespace AgentSimUnity
             float stepSize = Mathf.Max(1f, placement?.GridSnapStep ?? 5f);
 
             // Group zoned cells by edge id.
-            var byEdge = new Dictionary<long, List<(int alongCell, int side)>>();
-            foreach (var (edgeId, alongCell, side) in state.City.ZonedResidentialCells)
+            var byEdge = new Dictionary<long, List<(int alongCell, int perpCell, int side)>>();
+            foreach (var (edgeId, alongCell, perpCell, side) in state.City.ZonedResidentialCells)
             {
                 if (!byEdge.TryGetValue(edgeId, out var list))
                 {
-                    list = new List<(int, int)>();
+                    list = new List<(int, int, int)>();
                     byEdge[edgeId] = list;
                 }
-                list.Add((alongCell, side));
+                list.Add((alongCell, perpCell, side));
             }
 
             // Drop overlay objects for edges that no longer have zoned cells (or whose
@@ -1359,6 +1388,7 @@ namespace AgentSimUnity
             bool any = false;
             foreach (var e in state.RoadEdges.Values)
             {
+                if (e.ControlPoint.HasValue) continue;  // v1: curves don't influence structure orientation
                 if (!state.RoadNodes.TryGetValue(e.FromNodeId, out var f)) continue;
                 if (!state.RoadNodes.TryGetValue(e.ToNodeId, out var t)) continue;
                 var (cx, cy) = ClosestPointOnSegment(

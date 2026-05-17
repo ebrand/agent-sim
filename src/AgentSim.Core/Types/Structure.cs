@@ -14,6 +14,27 @@ public sealed class Structure
     public int X { get; set; } = -1;
     public int Y { get; set; } = -1;
 
+    /// <summary>Rotation around the vertical axis, in degrees CCW from "front faces +Y".
+    /// 0 = front faces north. Used by 3D rendering and by the manual-placement snap to
+    /// orient the lot toward the road it's anchored to. Tile occupancy still treats the
+    /// lot as axis-aligned at (X, Y, W, H) — rotated AABBs are approximated by the
+    /// inscribed square, which under-claims tiles at 45°.</summary>
+    public float RotationDegrees { get; set; }
+
+    /// <summary>Road edge this structure was anchored to during corridor-snap placement.
+    /// Null = freeform placement (legacy / sim-auto-placed without a road). Used for the
+    /// per-edge overlap check during manual placement.</summary>
+    public long? PlacementEdgeId { get; set; }
+
+    /// <summary>Along-index of the front-left corridor cell this lot occupies on
+    /// PlacementEdgeId. Lot's front edge covers cells [PlacementAlongCell .. +3].
+    /// Meaningless when PlacementEdgeId is null.</summary>
+    public int PlacementAlongCell { get; set; }
+
+    /// <summary>Which side of the road the lot is on: +1 = left of FromNode→ToNode
+    /// direction, -1 = right. 0 = unset / freeform.</summary>
+    public int PlacementSide { get; set; }
+
     /// <summary>
     /// Construction progress in ticks. When equal to required build duration, the structure is operational.
     /// </summary>

@@ -71,11 +71,12 @@ public class SpatialTests
     public void PlaceCommercialStructure_AutoPicksInZone()
     {
         var sim = Sim.Create(new SimConfig { Seed = 42, StartingTreasury = 2_000_000 });
-        var zone = sim.CreateCommercialZone(CommercialSector.Retail, new ZoneBounds(40, 40, 10, 10));
+        // Zone must be big enough to fit a 20×20 footprint plus some slack.
+        var zone = sim.CreateCommercialZone(CommercialSector.Retail, new ZoneBounds(40, 40, 30, 30));
         var shop = sim.PlaceCommercialStructure(zone.Id, StructureType.Shop, CommercialSector.Retail);
 
-        Assert.True(shop.X >= 40 && shop.X <= 47, $"Shop X={shop.X} should be within zone bounds.");
-        Assert.True(shop.Y >= 40 && shop.Y <= 47);
+        Assert.True(shop.X >= 40 && shop.X <= 49, $"Shop X={shop.X} should be within zone bounds.");
+        Assert.True(shop.Y >= 40 && shop.Y <= 49);
         Assert.Equal(shop.Id, sim.State.Region.Tilemap.StructureAt(shop.X, shop.Y));
     }
 
@@ -111,12 +112,12 @@ public class SpatialTests
     [InlineData(StructureType.PoliceStation)]
     [InlineData(StructureType.PaperMill)]
     [InlineData(StructureType.Hospital)]
-    public void Footprint_IsUniform10x10(StructureType type)
+    public void Footprint_IsUniform20x20(StructureType type)
     {
-        // All structures use a uniform 10×10 footprint (city-block scale).
+        // All structures use a uniform 20×20 footprint — 4u × 4u at the default 5m placement grid.
         var (w, h) = Footprint.For(type);
-        Assert.Equal(10, w);
-        Assert.Equal(10, h);
+        Assert.Equal(20, w);
+        Assert.Equal(20, h);
     }
 
     [Fact]

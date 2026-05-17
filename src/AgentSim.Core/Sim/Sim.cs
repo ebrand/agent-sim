@@ -151,6 +151,24 @@ public sealed class Sim
         return true;
     }
 
+    /// <summary>Mark a corridor cell as residentially zoned. Cell is identified by its
+    /// road edge, along-index (cell along the road), and side (+1/-1 = left/right of
+    /// FromNode→ToNode direction). Idempotent — re-zoning a cell is a no-op. Front-row
+    /// (perpCell=0) only; deeper rows aren't load-bearing for auto-spawn.</summary>
+    public void ZoneCorridorCellResidential(long edgeId, int alongCell, int side)
+    {
+        State.City.ZonedResidentialCells.Add((edgeId, alongCell, side));
+    }
+
+    /// <summary>Remove a corridor cell from the residential-zoned set. No-op if not zoned.</summary>
+    public void UnzoneCorridorCell(long edgeId, int alongCell, int side)
+    {
+        State.City.ZonedResidentialCells.Remove((edgeId, alongCell, side));
+    }
+
+    public bool IsCorridorCellZonedResidential(long edgeId, int alongCell, int side)
+        => State.City.ZonedResidentialCells.Contains((edgeId, alongCell, side));
+
     /// <summary>Set the structure's position (X, Y) and mark the tilemap. Throws if the spot is
     /// invalid (out of bounds, overlapping, or — for zoned structures — not in the right zone).
     /// If x or y is null, auto-picks: zoned structures fit within their zone, non-zoned anywhere.</summary>
@@ -333,6 +351,31 @@ public sealed class Sim
     /// standard treasury path (and the M17 construction-goods chain). The structure is operational
     /// once construction completes; immigration will fill it as housing becomes available.
     /// </summary>
+    /// <summary>Place a residential structure WITHOUT requiring a zone — for manual
+    /// corridor-snap placement before corridor-based zoning is implemented. ZoneId is set
+    /// to 0, which PlaceSpatial treats as "skip zone check".</summary>
+    public Structure PlaceResidentialStructureFreeform(StructureType type, int x, int y)
+    {
+        if (type.Category() != StructureCategory.Residential)
+            throw new ArgumentException($"{type} is not a residential structure type", nameof(type));
+
+        ChargeConstructionCost(type);
+        var structure = new Structure
+        {
+            Id = State.AllocateStructureId(),
+            Type = type,
+            ZoneId = 0,
+            ResidentialCapacity = Defaults.Residential.Capacity(type),
+            ConstructionTicks = 0,
+            RequiredConstructionTicks = State.Config.InstantConstruction ? 0 : Defaults.Residential.BuildDurationTicks,
+        };
+        State.City.Structures[structure.Id] = structure;
+        PlaceSpatial(structure, x, y);
+        State.LogEvent(SimEventSeverity.Info, "Placement",
+            $"Built {type} #{structure.Id} (freeform) at ({structure.X},{structure.Y})");
+        return structure;
+    }
+
     public Structure PlaceResidentialStructure(long residentialZoneId, StructureType type, int? x = null, int? y = null)
     {
         if (!State.City.Zones.TryGetValue(residentialZoneId, out var zone))

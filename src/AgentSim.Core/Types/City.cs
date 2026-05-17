@@ -12,6 +12,12 @@ public sealed class City
     public Dictionary<long, Structure> Structures { get; } = new();
     public Dictionary<long, Zone> Zones { get; } = new();
 
+    /// <summary>Corridor cells marked as residentially zoned. Each entry is the FRONT-ROW
+    /// cell (perpCell = 0) on a specific road edge + side. A structure's 4 front-edge cells
+    /// must all be in this set for auto-spawn to consider the location; manual placement
+    /// can override (freeform path). Keyed by (EdgeId, AlongCell, Side) — Side is +1/-1.</summary>
+    public HashSet<(long EdgeId, int AlongCell, int Side)> ZonedResidentialCells { get; } = new();
+
     public int Population => Agents.Count;
 
     /// <summary>Fractional births accumulator. When this exceeds 1.0, integer babies are born and the accumulator decreases.</summary>

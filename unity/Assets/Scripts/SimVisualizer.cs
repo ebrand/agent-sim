@@ -44,6 +44,14 @@ namespace AgentSimUnity
         private readonly Dictionary<long, LineRenderer> _roadEdgeRenderers = new();
         private readonly Dictionary<long, GameObject> _nodeObjects = new();
         private LineRenderer? _roadPreview;
+        // Guide circle that follows the cursor while in PlaceRoad mode. Radius matches
+        // setback + corridor depth — i.e., how far the corridor would extend if a road were
+        // placed through this point at the default lane count. Visual aid only.
+        private LineRenderer? _roadNodeGuideCircle;
+        /// <summary>Half-width of the default-config road (1+1 lanes → 10m total → 5m setback).
+        /// Used to size the guide circle; if road config becomes selectable, plumb the chosen
+        /// lane counts through here.</summary>
+        private const float DefaultRoadHalfWidthMeters = 5f;
         private Material _roadLineMaterial = null!;
         private Material _nodeMaterial = null!;
         private Material _roadPreviewMaterial = null!;
@@ -66,6 +74,37 @@ namespace AgentSimUnity
         private GameObject? _ghostEndNode;
         private Material _ghostNodeMaterial = null!;
         private static readonly Color RoadGhostNodeColor = new(0.95f, 0.90f, 0.45f, 0.7f);
+
+        // Road-edge corridors: faint translucent rectangles showing the buildable strip
+        // around each edge. Visualization-only for now (no placement constraint).
+        private readonly Dictionary<long, GameObject> _corridorObjects = new();
+        private Material _corridorMaterial = null!;
+        /// <summary>Corridor visualizes only the front row of buildable cells (1 step deep
+        /// beyond the road setback). Structures snap their FRONT EDGE to these cells; the
+        /// rest of the lot is allowed to extend past the corridor strip.</summary>
+        /// <summary>Number of corridor cells deep on each side of the road. Only the FIRST
+        /// row is load-bearing for placement (a structure's front edge snaps to row 0); deeper
+        /// rows are shown purely as a visual hint for how far back lots can extend.</summary>
+        public const int CorridorDepthCells = 10;
+        /// <summary>How deep a structure's lot is allowed to extend behind the corridor strip
+        /// (visualized as a dashed back-guide line). 10u at the standard 5m unit = 50m.
+        /// Currently disabled — set to a positive value to re-enable the back-guide line.</summary>
+        public const float StructureMaxDepthMeters = 0f;
+        private static readonly Color CorridorColor = new(0.10f, 0.10f, 0.10f, 0.10f);
+
+        // Per-edge zoning overlay: one GameObject per road edge that has zoned corridor
+        // cells. Rendered as filled translucent quads over the corridor outline.
+        private readonly Dictionary<long, GameObject> _zoneOverlayObjects = new();
+        private static readonly Color ResidentialZoneColor = new(0.45f, 0.85f, 0.50f, 0.25f);
+
+        // 3D structure meshes: one GameObject per Structure (keyed by structure id).
+        // Each one holds a lot quad + a centered building box, oriented so its +Y face points
+        // toward the nearest road. Material is shared (vertex colors carry per-face shading).
+        private readonly Dictionary<long, GameObject> _structureObjects = new();
+        private GameObject? _structureContainer;
+        private Material? _structureMaterial;
+        private static readonly Color LotColor    = new(0.42f, 0.58f, 0.30f, 1f);  // grass green
+        private static readonly Color MarkerColor = new(0.95f, 0.30f, 0.20f, 1f);  // front-edge marker
 
         // Cursor-following grid: a small procedural mesh of line quads at integer tile
         // positions within a 20-tile radius of the cursor. Per-vertex alpha fades radially
@@ -319,9 +358,14 @@ namespace AgentSimUnity
             }
             // Refresh positions every frame so dragging a node visibly updates connected edges.
             UpdateRoadGraphPositions(state);
+            UpdateCorridorMeshes(state);
+            UpdateZoneOverlays(state);
+            UpdateStructureMeshes(state);
 
             // Live preview line during drag.
             UpdateRoadPreview();
+            // 10u radius guide circle around the cursor while in PlaceRoad mode.
+            UpdateRoadNodeGuideCircle();
             // Hover + drag on nodes (only in inspect mode).
             HandleNodeInteraction();
             // Alignment guides when the cursor / dragged node aligns with another node.
@@ -387,18 +431,21 @@ namespace AgentSimUnity
             var bg = new GUIStyle(GUI.skin.box) { fontSize = 12, alignment = TextAnchor.MiddleCenter };
             bg.normal.textColor = new Color(0.95f, 0.85f, 0.30f);
 
+            float stepSize = GetComponent<PlacementController>()?.GridSnapStep ?? 5f;
             if (_guideAlignedNodeForX is Point2 ax)
             {
                 // Vertical guide → distance is along Y axis between probe and aligned node.
                 float meters = Mathf.Abs(probe.y - ax.Y);
+                int units = Mathf.RoundToInt(meters / stepSize);
                 var midTile = new Vector2(ax.X, (probe.y + ax.Y) * 0.5f);
-                DrawGuideLabel(cam, midTile, $"{meters:F0}m", bg);
+                DrawGuideLabel(cam, midTile, $"{units}u", bg);
             }
             if (_guideAlignedNodeForY is Point2 ay)
             {
                 float meters = Mathf.Abs(probe.x - ay.X);
+                int units = Mathf.RoundToInt(meters / stepSize);
                 var midTile = new Vector2((probe.x + ay.X) * 0.5f, ay.Y);
-                DrawGuideLabel(cam, midTile, $"{meters:F0}m", bg);
+                DrawGuideLabel(cam, midTile, $"{units}u", bg);
             }
         }
         private GUIStyle? _alignLabelStyle;
@@ -431,7 +478,8 @@ namespace AgentSimUnity
                 _roadLenStyle = new GUIStyle(GUI.skin.box) { fontSize = 13, alignment = TextAnchor.MiddleCenter };
                 _roadLenStyle.normal.textColor = new Color(0.95f, 0.90f, 0.45f);
             }
-            DrawGuideLabel(cam, mid, $"{meters:F1} m  bearing {bearing:F0}°", _roadLenStyle, wider: true);
+            int units = Mathf.RoundToInt(meters / placement.GridSnapStep);
+            DrawGuideLabel(cam, mid, $"{units}u  bearing {bearing:F0}°", _roadLenStyle, wider: true);
         }
         private GUIStyle? _roadLenStyle;
 
@@ -590,6 +638,11 @@ namespace AgentSimUnity
             _roadPreviewMaterial = MakeVertexColoredMaterial(RoadPreviewColor);
             _guideMaterial = MakeVertexColoredMaterial(GuideColor);
             _cursorGridMaterial = MakeVertexColoredMaterial(Color.white);
+            // Corridors use vertex colors per edge (white-tinted material so vertex color wins).
+            _corridorMaterial = MakeVertexColoredMaterial(Color.white);
+            _structureMaterial = MakeVertexColoredMaterial(Color.white);
+            _structureContainer = new GameObject("Structures3D");
+            _structureContainer.transform.SetParent(gridGo.transform, worldPositionStays: false);
             _nodeMesh = BuildCircleMesh(radius: 1.0f, sides: 24);
 
             _backgroundTilemap = MakeTilemap(gridGo.transform, "Background", sortingOrder: -10);
@@ -1090,6 +1143,246 @@ namespace AgentSimUnity
             }
         }
 
+        /// <summary>Build / refresh / tear down corridor GameObjects so every road edge has
+        /// a faint translucent rectangle painted on the ground showing its buildable strip
+        /// (within CorridorHalfDepthTiles tiles perpendicular to the edge on each side).</summary>
+        private void UpdateCorridorMeshes(SimState state)
+        {
+            var stale = new List<long>();
+            foreach (var kv in _corridorObjects)
+                if (!state.RoadEdges.ContainsKey(kv.Key)) stale.Add(kv.Key);
+            foreach (var id in stale)
+            {
+                if (_corridorObjects[id] != null) Destroy(_corridorObjects[id]);
+                _corridorObjects.Remove(id);
+            }
+            if (state.RoadEdges.Count == 0) return;
+
+            // Precompute the endpoint tuples for cull queries — each edge gets the list of
+            // all OTHER edges as its competitors.
+            var allTuples = new List<(float fx, float fy, float tx, float ty)>(state.RoadEdges.Count);
+            var edgeIds = new List<long>(state.RoadEdges.Count);
+            foreach (var e in state.RoadEdges.Values)
+            {
+                if (!state.RoadNodes.TryGetValue(e.FromNodeId, out var f)) continue;
+                if (!state.RoadNodes.TryGetValue(e.ToNodeId, out var t)) continue;
+                allTuples.Add((f.Position.X, f.Position.Y, t.Position.X, t.Position.Y));
+                edgeIds.Add(e.Id);
+            }
+
+            // Cell size = the player's current snap step (so corridor cells line up with the
+            // placement grid). Falls back to 5m when no PlacementController is present.
+            var placement = GetComponent<PlacementController>();
+            float stepSize = Mathf.Max(1f, placement?.GridSnapStep ?? 5f);
+            float lineWidth = Mathf.Max(0.05f, stepSize * 0.04f);
+
+            for (int idx = 0; idx < edgeIds.Count; idx++)
+            {
+                var edgeId = edgeIds[idx];
+                if (!state.RoadEdges.TryGetValue(edgeId, out var edge)) continue;
+                if (!state.RoadNodes.TryGetValue(edge.FromNodeId, out var fromN)) continue;
+                if (!state.RoadNodes.TryGetValue(edge.ToNodeId, out var toN)) continue;
+
+                if (!_corridorObjects.TryGetValue(edge.Id, out var go))
+                {
+                    go = new GameObject($"Corridor#{edge.Id}");
+                    go.transform.SetParent(_roadContainer.transform, worldPositionStays: false);
+                    go.AddComponent<MeshFilter>();
+                    var mr = go.AddComponent<MeshRenderer>();
+                    mr.sharedMaterial = _corridorMaterial;
+                    mr.receiveShadows = false;
+                    mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    _corridorObjects[edge.Id] = go;
+                }
+
+                // Build per-edge "others" list (exclude self).
+                var others = new List<(float, float, float, float)>(allTuples.Count - 1);
+                for (int k = 0; k < allTuples.Count; k++)
+                    if (k != idx) others.Add(allTuples[k]);
+
+                var mf = go.GetComponent<MeshFilter>();
+                // Reuse the same Mesh across frames so we don't leak GPU resource ids.
+                float setback = edge.WidthTiles * 0.5f;
+                float halfDepth = setback + CorridorDepthCells * stepSize;
+                // Dashed back-guide marks where a 10u-deep structure's body would reach.
+                float backGuide = setback + StructureMaxDepthMeters;
+                mf.sharedMesh = ProceduralMesh.BuildCorridorGrid(
+                    fromN.Position.X, fromN.Position.Y, toN.Position.X, toN.Position.Y,
+                    halfDepth: halfDepth,
+                    stepSize: stepSize,
+                    lineWidth: lineWidth,
+                    otherEdges: others,
+                    color: CorridorColor,
+                    setback: setback,
+                    backGuideDistance: backGuide,
+                    reuseMesh: mf.sharedMesh);
+            }
+        }
+
+        /// <summary>One 3D lot mesh per placed structure. Adds new objects, removes stale ones,
+        /// refreshes the rotation each frame (cheap) so structures re-orient when roads change.</summary>
+        /// <summary>Build / refresh / tear down per-edge zone overlay meshes. Group zoned
+        /// cells by edge id, then ensure each edge with cells has a GameObject whose mesh
+        /// fills those cells with the residential zone color.</summary>
+        private void UpdateZoneOverlays(SimState state)
+        {
+            var placement = GetComponent<PlacementController>();
+            float stepSize = Mathf.Max(1f, placement?.GridSnapStep ?? 5f);
+
+            // Group zoned cells by edge id.
+            var byEdge = new Dictionary<long, List<(int alongCell, int side)>>();
+            foreach (var (edgeId, alongCell, side) in state.City.ZonedResidentialCells)
+            {
+                if (!byEdge.TryGetValue(edgeId, out var list))
+                {
+                    list = new List<(int, int)>();
+                    byEdge[edgeId] = list;
+                }
+                list.Add((alongCell, side));
+            }
+
+            // Drop overlay objects for edges that no longer have zoned cells (or whose
+            // edge was deleted).
+            var stale = new List<long>();
+            foreach (var kv in _zoneOverlayObjects)
+                if (!byEdge.ContainsKey(kv.Key) || !state.RoadEdges.ContainsKey(kv.Key))
+                    stale.Add(kv.Key);
+            foreach (var id in stale)
+            {
+                if (_zoneOverlayObjects[id] != null) Destroy(_zoneOverlayObjects[id]);
+                _zoneOverlayObjects.Remove(id);
+            }
+
+            // Build / refresh per-edge overlay meshes.
+            foreach (var (edgeId, cells) in byEdge)
+            {
+                if (!state.RoadEdges.TryGetValue(edgeId, out var edge)) continue;
+                if (!state.RoadNodes.TryGetValue(edge.FromNodeId, out var fn)) continue;
+                if (!state.RoadNodes.TryGetValue(edge.ToNodeId, out var tn)) continue;
+
+                if (!_zoneOverlayObjects.TryGetValue(edgeId, out var go))
+                {
+                    go = new GameObject($"ZoneOverlay#{edgeId}");
+                    go.transform.SetParent(_roadContainer.transform, worldPositionStays: false);
+                    go.AddComponent<MeshFilter>();
+                    var mr = go.AddComponent<MeshRenderer>();
+                    mr.sharedMaterial = _corridorMaterial;  // same vertex-colored material
+                    mr.receiveShadows = false;
+                    mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    _zoneOverlayObjects[edgeId] = go;
+                }
+
+                var mf = go.GetComponent<MeshFilter>();
+                float setback = edge.WidthTiles * 0.5f;
+                mf.sharedMesh = ProceduralMesh.BuildZonedCellsOverlay(
+                    fn.Position.X, fn.Position.Y, tn.Position.X, tn.Position.Y,
+                    stepSize, setback, cells, ResidentialZoneColor,
+                    reuseMesh: mf.sharedMesh);
+            }
+        }
+
+        private void UpdateStructureMeshes(SimState state)
+        {
+            if (_structureContainer == null || _structureMaterial == null) return;
+
+            // Cull stale (structure removed).
+            var stale = new List<long>();
+            foreach (var kv in _structureObjects)
+                if (!state.City.Structures.ContainsKey(kv.Key)) stale.Add(kv.Key);
+            foreach (var id in stale)
+            {
+                if (_structureObjects[id] != null) Destroy(_structureObjects[id]);
+                _structureObjects.Remove(id);
+            }
+
+            foreach (var s in state.City.Structures.Values)
+            {
+                if (s.X < 0 || s.Y < 0) continue;
+                var (w, h) = Footprint.For(s.Type);
+
+                if (!_structureObjects.TryGetValue(s.Id, out var go))
+                {
+                    go = new GameObject($"Structure#{s.Id}");
+                    go.transform.SetParent(_structureContainer.transform, worldPositionStays: false);
+                    var mf = go.AddComponent<MeshFilter>();
+                    var mr = go.AddComponent<MeshRenderer>();
+                    mr.sharedMaterial = _structureMaterial;
+                    mr.receiveShadows = false;
+                    mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+                    // Lot is 4u × 4u; building is 2u × 2u × ~1u tall, centered. Sizes in meters
+                    // since 1 tile = 1 meter in the sim.
+                    float lotM = w;            // tiles → m (1:1)
+                    float bldgM = lotM * 0.5f; // half the lot width
+                    float bldgH = bldgM * 0.5f;
+                    mf.sharedMesh = ProceduralMesh.BuildStructureLot(
+                        lotWidthM: lotM, lotDepthM: h,
+                        bldgWidthM: bldgM, bldgDepthM: bldgM, bldgHeightM: bldgH,
+                        lotColor: LotColor,
+                        bldgColor: StructureColor(s),
+                        markerColor: MarkerColor);
+
+                    _structureObjects[s.Id] = go;
+                }
+
+                // Position: center of the footprint in sim-tile coords.
+                float cx = s.X + w * 0.5f;
+                float cy = s.Y + h * 0.5f;
+                go.transform.localPosition = new Vector3(cx, cy, 0f);
+
+                // Orient: prefer the stored RotationDegrees (set during corridor-snap
+                // placement). Fall back to nearest-road for legacy / sim-auto-spawned
+                // structures that don't have rotation baked in yet.
+                float angleDeg;
+                if (s.PlacementEdgeId.HasValue
+                    && state.RoadEdges.ContainsKey(s.PlacementEdgeId.Value))
+                {
+                    angleDeg = s.RotationDegrees;
+                }
+                else
+                {
+                    var dir = NearestRoadDirection(state, cx, cy);
+                    angleDeg = dir.HasValue
+                        ? Mathf.Atan2(dir.Value.dx, dir.Value.dy) * Mathf.Rad2Deg
+                        : 0f;
+                }
+                go.transform.localRotation = Quaternion.Euler(0f, 0f, angleDeg);
+            }
+        }
+
+        /// <summary>Direction (in tile-space dx, dy) from (sx, sy) toward the closest point on
+        /// any road edge. Returns null if there are no edges.</summary>
+        private static (float dx, float dy)? NearestRoadDirection(SimState state, float sx, float sy)
+        {
+            float bestD2 = float.MaxValue;
+            (float dx, float dy) best = (0, 0);
+            bool any = false;
+            foreach (var e in state.RoadEdges.Values)
+            {
+                if (!state.RoadNodes.TryGetValue(e.FromNodeId, out var f)) continue;
+                if (!state.RoadNodes.TryGetValue(e.ToNodeId, out var t)) continue;
+                var (cx, cy) = ClosestPointOnSegment(
+                    f.Position.X, f.Position.Y, t.Position.X, t.Position.Y, sx, sy);
+                float dx = cx - sx, dy = cy - sy;
+                float d2 = dx * dx + dy * dy;
+                if (d2 < bestD2) { bestD2 = d2; best = (dx, dy); any = true; }
+            }
+            if (!any || bestD2 < 1e-6f) return null;
+            return best;
+        }
+
+        private static (float, float) ClosestPointOnSegment(float ax, float ay, float bx, float by,
+                                                            float px, float py)
+        {
+            float dx = bx - ax, dy = by - ay;
+            float len2 = dx * dx + dy * dy;
+            if (len2 < 1e-6f) return (ax, ay);
+            float t = ((px - ax) * dx + (py - ay) * dy) / len2;
+            t = Mathf.Clamp01(t);
+            return (ax + dx * t, ay + dy * t);
+        }
+
+
         /// <summary>Hover + click+drag handling for road graph nodes. Hover highlight is
         /// always active so the player sees snap targets when drawing roads. Drag is only
         /// allowed in inspect mode so it doesn't fight any active placement tool.</summary>
@@ -1232,6 +1525,83 @@ namespace AgentSimUnity
                             inMode && placement!.RoadPreviewStart.HasValue ? placement.RoadPreviewStart.Value : (Vector2?)null);
             UpdateGhostNode(ref _ghostEndNode, "RoadGhostEnd",
                             inMode && placement!.RoadPreviewEnd.HasValue ? placement.RoadPreviewEnd.Value : (Vector2?)null);
+        }
+
+        /// <summary>Draw a 10u-radius ring around the cursor / dragged road endpoint while in
+        /// PlaceRoad mode. Pure visual aid — no constraint is enforced from this.</summary>
+        private void UpdateRoadNodeGuideCircle()
+        {
+            var placement = GetComponent<PlacementController>();
+            bool inMode = placement != null
+                       && placement.CurrentMode == PlacementController.Mode.PlaceRoad;
+
+            // Center: the snapped cursor position if we have it (during drag), otherwise the
+            // raw ground hit (pre-drag hover).
+            Vector2? center = null;
+            if (inMode)
+            {
+                if (placement!.RoadPreviewEnd.HasValue) center = placement.RoadPreviewEnd;
+                else
+                {
+                    var hit = MouseToGroundFloat(Camera.main);
+                    if (hit.HasValue) center = hit;
+                }
+            }
+
+            if (center is null)
+            {
+                if (_roadNodeGuideCircle != null)
+                {
+                    Destroy(_roadNodeGuideCircle.gameObject);
+                    _roadNodeGuideCircle = null;
+                }
+                return;
+            }
+
+            if (_roadNodeGuideCircle == null)
+            {
+                var go = new GameObject("RoadNodeGuideCircle");
+                go.transform.SetParent(_roadContainer.transform, worldPositionStays: false);
+                _roadNodeGuideCircle = go.AddComponent<LineRenderer>();
+                _roadNodeGuideCircle.material = _guideMaterial;
+                _roadNodeGuideCircle.startWidth = 0.25f;
+                _roadNodeGuideCircle.endWidth = 0.25f;
+                _roadNodeGuideCircle.useWorldSpace = false;
+                _roadNodeGuideCircle.loop = true;
+                _roadNodeGuideCircle.numCapVertices = 0;
+                var dimGuide = new Color(GuideColor.r, GuideColor.g, GuideColor.b, 0.30f);
+                _roadNodeGuideCircle.startColor = dimGuide;
+                _roadNodeGuideCircle.endColor = dimGuide;
+                const int segments = 64;
+                _roadNodeGuideCircle.positionCount = segments;
+            }
+
+            // Radius = setback + corridor depth, so the ring sits exactly at the back edge of
+            // the corridor that would be drawn if a default-config road went through here.
+            float stepSize = Mathf.Max(1f, placement?.GridSnapStep ?? 5f);
+            float radius = DefaultRoadHalfWidthMeters + CorridorDepthCells * stepSize;
+            int n = _roadNodeGuideCircle.positionCount;
+            float cx = center.Value.x, cy = center.Value.y;
+            for (int i = 0; i < n; i++)
+            {
+                float a = (i / (float)n) * Mathf.PI * 2f;
+                _roadNodeGuideCircle.SetPosition(i,
+                    new Vector3(cx + Mathf.Cos(a) * radius, cy + Mathf.Sin(a) * radius, -0.07f));
+            }
+        }
+
+        /// <summary>Raycast cursor onto Y=0 ground plane, return float (tileX, tileY) — same
+        /// mapping as MouseToTile but without flooring to integer cells.</summary>
+        private static Vector2? MouseToGroundFloat(Camera cam)
+        {
+            if (cam == null || Mouse.current is null) return null;
+            var screen = Mouse.current.position.ReadValue();
+            var ray = cam.ScreenPointToRay(new Vector3(screen.x, screen.y, 0));
+            if (Mathf.Abs(ray.direction.y) < 1e-5f) return null;
+            float t = -ray.origin.y / ray.direction.y;
+            if (t < 0) return null;
+            var hit = ray.origin + ray.direction * t;
+            return new Vector2(hit.x, hit.z);
         }
 
         private void UpdateGhostNode(ref GameObject? go, string name, Vector2? worldPos)
@@ -1420,6 +1790,16 @@ namespace AgentSimUnity
                 || (Mouse.current is not null
                     && (Mouse.current.position.ReadValue().x < SidebarWidthPx
                         || Mouse.current.position.ReadValue().y > Screen.height - TopBarHeightPx)))
+            {
+                if (_cursorGridGo.activeSelf) _cursorGridGo.SetActive(false);
+                return;
+            }
+            // Hide during residential corridor zoning — the cell-highlight outline + the
+            // corridor grid are the relevant visuals there; the world grid is just noise.
+            var pc = GetComponent<PlacementController>();
+            if (pc != null
+                && pc.CurrentMode == PlacementController.Mode.PaintZone
+                && pc.CurrentZoneType == ZoneType.Residential)
             {
                 if (_cursorGridGo.activeSelf) _cursorGridGo.SetActive(false);
                 return;

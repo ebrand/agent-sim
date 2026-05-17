@@ -10,8 +10,10 @@ namespace AgentSim.Core.Defaults;
 /// </summary>
 public static class Footprint
 {
-    /// <summary>(Width, Height) in tiles. Uniform 10×10 for now (realistic city-block scale).</summary>
-    public static (int W, int H) For(StructureType type) => (10, 10);
+    /// <summary>(Width, Height) in tiles. Uniform 20×20 for now — 4u × 4u when the placement
+    /// grid is on its default 5m step. Variable rectangular footprints (4u × 5u, 4u × 6u, …)
+    /// will come later once structure types are visually differentiated.</summary>
+    public static (int W, int H) For(StructureType type) => (20, 20);
 
     /// <summary>True when the structure occupies tiles in a zone (residential/commercial).
     /// Non-zoned structures (civic/industrial outside HQ/restoration) place anywhere on the map.</summary>

@@ -30,6 +30,7 @@ public sealed class RoadEdge
 
     public int TotalLanes => LanesForward + LanesBackward;
 
-    /// <summary>Render width in tiles: <c>lanes × 3.5m + 2m shoulder</c> (sim treats 1 tile = 1m).</summary>
-    public float WidthTiles => TotalLanes * 3.5f + 2f;
+    /// <summary>Render width in tiles: <c>lanes × 4m + 2m</c> (1m shoulder each side).
+    /// Sim treats 1 tile = 1m so this is also tile units. Default 1+1 → 10 tiles.</summary>
+    public float WidthTiles => TotalLanes * 4f + 2f;
 }
